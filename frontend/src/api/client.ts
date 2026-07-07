@@ -112,4 +112,11 @@ export const api = {
     request<{ message: string }>(`/admin/${propertyId}/unarchive`, {
       method: "POST",
     }),
+  getKpis: () =>
+    request<{
+      properties_by_type: Record<string, number>;
+      archived_count: number;
+      user_count: number;
+      ads_by_source: Record<string, number>;
+    }>("/admin/kpis"),
 };

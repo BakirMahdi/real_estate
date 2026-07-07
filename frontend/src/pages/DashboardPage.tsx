@@ -9,6 +9,9 @@ import {
   Server,
   XCircle,
   Lock,
+  Users,
+  Archive,
+  Globe,
 } from "lucide-react";
 import { api, isAuthenticated, logout } from "../api/client";
 import { sourceLabel } from "../lib/format";
@@ -44,6 +47,12 @@ export function DashboardPage() {
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [kpis, setKpis] = useState<{
+    properties_by_type: Record<string, number>;
+    archived_count: number;
+    user_count: number;
+    ads_by_source: Record<string, number>;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated()) {
@@ -52,15 +61,17 @@ export function DashboardPage() {
     }
     setLoading(true);
     try {
-      const [health, dbStatus, props, scrapeStatus] = await Promise.all([
+      const [health, dbStatus, props, scrapeStatus, kpisData] = await Promise.all([
         api.health(),
         api.healthDb(),
         api.getAllProperties(),
         api.getScrapeStatus(),
+        api.getKpis(),
       ]);
       setApiHealth(health);
       setDbHealth(dbStatus);
       setTotalProperties(props.count);
+      setKpis(kpisData);
       if (scrapeStatus.next_scrape_time !== undefined) {
         setNextScrapeTime(scrapeStatus.next_scrape_time);
       }
@@ -303,7 +314,73 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "150ms" }}>
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "150ms" }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600/20">
+            <Archive className="h-5 w-5 text-emerald-400" />
+          </div>
+          <p className="text-xs text-slate-500">Annonces archivées</p>
+          <p className="mt-2 font-display text-3xl font-semibold text-white">
+            {loading ? "—" : kpis?.archived_count ?? 0}
+          </p>
+        </div>
+
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "200ms" }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/20">
+            <Users className="h-5 w-5 text-blue-400" />
+          </div>
+          <p className="text-xs text-slate-500">Utilisateurs inscrits</p>
+          <p className="mt-2 font-display text-3xl font-semibold text-white">
+            {loading ? "—" : kpis?.user_count ?? 0}
+          </p>
+        </div>
+
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "250ms" }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-600/20">
+            <Globe className="h-5 w-5 text-cyan-400" />
+          </div>
+          <p className="text-xs text-slate-500">Sources actives</p>
+          <p className="mt-2 font-display text-3xl font-semibold text-white">
+            {loading ? "—" : Object.keys(kpis?.ads_by_source ?? {}).length}
+          </p>
+        </div>
+      </div>
+
+      {kpis && !loading && (
+        <div className="mb-8 grid gap-4 sm:grid-cols-2">
+          <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "350ms" }}>
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">Propriétés par type</h3>
+            <div className="space-y-3">
+              {Object.entries(kpis.properties_by_type).map(([type, count]) => (
+                <div key={type} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">{type}</span>
+                  <span className="font-display text-lg font-semibold text-white">{count}</span>
+                </div>
+              ))}
+              {Object.keys(kpis.properties_by_type).length === 0 && (
+                <p className="text-sm text-slate-500">Aucune donnée disponible</p>
+              )}
+            </div>
+          </div>
+
+          <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "400ms" }}>
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">Annonces par source</h3>
+            <div className="space-y-3">
+              {Object.entries(kpis.ads_by_source).map(([source, count]) => (
+                <div key={source} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">{sourceLabel(source)}</span>
+                  <span className="font-display text-lg font-semibold text-white">{count}</span>
+                </div>
+              ))}
+              {Object.keys(kpis.ads_by_source).length === 0 && (
+                <p className="text-sm text-slate-500">Aucune donnée disponible</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "450ms" }}>
         <h2 className="mb-2 font-display text-xl font-semibold text-white">
           Lancer un scrape
         </h2>

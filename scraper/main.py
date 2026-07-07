@@ -416,3 +416,52 @@ def admin_unarchive_property(property_id: int, request: Request = None):
     
     unarchive_property(property_id)
     return {"message": "Property unarchived successfully"}
+
+
+@app.get("/admin/kpis")
+def get_kpis(request: Request = None):
+    """Get dashboard KPIs. Admin only."""
+    role = get_current_user_role(request)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Properties per property type
+    cur.execute("""
+        SELECT property_type, COUNT(*) as count
+        FROM properties
+        WHERE archived = FALSE
+        GROUP BY property_type
+        ORDER BY count DESC
+    """)
+    properties_by_type = {row[0]: row[1] for row in cur.fetchall()}
+    
+    # Number of archived ads
+    cur.execute("SELECT COUNT(*) FROM properties WHERE archived = TRUE")
+    archived_count = cur.fetchone()[0]
+    
+    # Number of users registered (excluding admin)
+    cur.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
+    user_count = cur.fetchone()[0]
+    
+    # Number of ads scraped from each website
+    cur.execute("""
+        SELECT source, COUNT(*) as count
+        FROM properties
+        WHERE archived = FALSE
+        GROUP BY source
+        ORDER BY count DESC
+    """)
+    ads_by_source = {row[0]: row[1] for row in cur.fetchall()}
+    
+    cur.close()
+    conn.close()
+    
+    return {
+        "properties_by_type": properties_by_type,
+        "archived_count": archived_count,
+        "user_count": user_count,
+        "ads_by_source": ads_by_source
+    }

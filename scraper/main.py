@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from .scrapers.tayara import scrape_tayara
 from .scrapers.mubawab import scrape_mubawab
-from .insert import bulk_get_existing_ids, bulk_insert_properties
+from .insert import bulk_get_existing_ids, bulk_insert_properties, bulk_get_latest_properties, is_same_property
 from .queries import get_properties, get_property_by_id, get_all_properties
 from .db import get_conn
 from .sample_log import log_scrape_samples
@@ -123,16 +123,26 @@ def _run_scrape_task():
             # Determine source tag from the first item, fall back to scraper name
             source_tag = data[0]["source"] if data else name
 
-            # Bulk existence check: one DB round-trip for all ad_ids
+            # Bulk latest properties retrieval: one DB round-trip for all ad_ids
             all_ad_ids = [item["ad_id"] for item in data if item.get("ad_id")]
-            existing_ids = bulk_get_existing_ids(source_tag, all_ad_ids)
+            latest_properties = bulk_get_latest_properties(source_tag, all_ad_ids)
 
-            # Filter to only new items
-            new_items = [
-                item for item in data
-                if item.get("ad_id") and item["ad_id"] not in existing_ids
-            ]
-            skipped = len(data) - len(new_items)
+            # Filter scraped items: skip if identical to latest DB, insert otherwise
+            new_items = []
+            skipped = 0
+            for item in data:
+                ad_id = item.get("ad_id")
+                if not ad_id:
+                    continue
+                latest_db = latest_properties.get(ad_id)
+                if latest_db is None:
+                    new_items.append(item)
+                else:
+                    if is_same_property(item, latest_db):
+                        skipped += 1
+                    else:
+                        new_items.append(item)
+
             no_id_errors = sum(1 for item in data if not item.get("ad_id"))
 
             # Bulk insert in a single DB connection/transaction
@@ -202,7 +212,7 @@ def search_properties(
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ):
-    properties = get_properties(
+    properties, total_count = get_properties(
         city=city,
         property_type=property_type,
         listing_type=listing_type,
@@ -216,7 +226,7 @@ def search_properties(
         limit=limit,
         offset=offset,
     )
-    return {"count": len(properties), "items": properties}
+    return {"count": total_count, "items": properties}
 
 
 @app.get("/properties/{property_id}")

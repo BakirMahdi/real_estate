@@ -9,7 +9,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  Hash,
   MapPin,
   Maximize2,
   Sofa,
@@ -217,7 +216,6 @@ export function PropertyPage() {
               value={property.address || property.city || "—"}
             />
             <DetailItem icon={Maximize2} label="Surface" value={formatArea(property.area)} />
-            <DetailItem icon={Hash} label="ID annonce" value={property.ad_id} />
             <DetailItem icon={Tag} label="Source" value={sourceLabel(property.source)} />
             <DetailItem icon={Building} label="Type" value={subcategoryLabel(property.subcategory, property.property_type)} />
             <DetailItem

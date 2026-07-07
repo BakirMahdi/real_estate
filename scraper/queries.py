@@ -46,8 +46,12 @@ def get_properties(
     cur = conn.cursor()
 
     sql = f"""
-        SELECT {_PROPERTY_COLUMNS}
-        FROM properties
+        SELECT {_PROPERTY_COLUMNS}, COUNT(*) OVER() as total_count
+        FROM (
+            SELECT DISTINCT ON (source, ad_id) *
+            FROM properties
+            ORDER BY source, ad_id, id DESC
+        ) properties
         WHERE 1=1
     """
     params = []
@@ -89,11 +93,19 @@ def get_properties(
 
     cur.execute(sql, tuple(params))
     rows = cur.fetchall()
-    properties = [_row_to_dict(cur, row) for row in rows]
+    
+    total_count = 0
+    properties = []
+    if rows:
+        raw_properties = [_row_to_dict(cur, row) for row in rows]
+        total_count = raw_properties[0]["total_count"]
+        for p in raw_properties:
+            p.pop("total_count", None)
+        properties = raw_properties
 
     cur.close()
     conn.close()
-    return properties
+    return properties, total_count
 
 
 def get_property_by_id(property_id):

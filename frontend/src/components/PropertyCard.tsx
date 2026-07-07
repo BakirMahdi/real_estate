@@ -21,8 +21,9 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
   const mainImage = property.images && property.images.length > 0 ? property.images[0] : null;
 
   return (
-    <article
-      className="group animate-slide-up overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
+    <Link
+      to={`/property/${property.id}`}
+      className="group block animate-slide-up overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       <div className="relative h-44 w-full overflow-hidden bg-slate-800">
@@ -87,23 +88,12 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
         </div>
 
         <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-4">
-          <Link
-            to={`/property/${property.id}`}
-            className="text-sm font-medium text-brand-400 transition hover:text-brand-300"
-          >
+          <span className="text-sm font-medium text-brand-400 transition group-hover:text-brand-300">
             Voir détails
-          </Link>
-          <a
-            href={property.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-xs text-slate-500 transition hover:text-slate-300"
-          >
-            Source
-            <ArrowUpRight className="h-3.5 w-3.5" />
-          </a>
+          </span>
+          <ArrowUpRight className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-400" />
         </div>
       </div>
-    </article>
+    </Link>
   );
 }

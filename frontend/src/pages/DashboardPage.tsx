@@ -10,7 +10,7 @@ import {
   XCircle,
   Lock,
 } from "lucide-react";
-import { api } from "../api/client";
+import { api, hasAdminToken, setAdminToken } from "../api/client";
 import { sourceLabel } from "../lib/format";
 import type { HealthStatus, ScrapeResult } from "../types/property";
 
@@ -40,12 +40,14 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [nextScrapeTime, setNextScrapeTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [needsAuth, setNeedsAuth] = useState(false);
+  const [needsAuth, setNeedsAuth] = useState(!hasAdminToken());
   const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const refresh = useCallback(async () => {
+    if (!hasAdminToken()) return;
     setLoading(true);
-    setNeedsAuth(false);
     try {
       const [health, dbStatus, props, scrapeStatus] = await Promise.all([
         api.health(),
@@ -173,10 +175,25 @@ export function DashboardPage() {
     }
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    sessionStorage.setItem("admin_password", passwordInput);
-    refresh();
+    if (!passwordInput) return;
+    
+    setAuthError(null);
+    setIsAuthenticating(true);
+    setAdminToken(passwordInput);
+    
+    try {
+      // Test the token
+      await api.getScrapeStatus();
+      setNeedsAuth(false);
+      refresh();
+    } catch (err) {
+      setAuthError("Mot de passe incorrect. Veuillez réessayer.");
+      setAdminToken(null);
+    } finally {
+      setIsAuthenticating(false);
+    }
   };
 
   const apiOk = apiHealth?.status === "ok";
@@ -199,11 +216,22 @@ export function DashboardPage() {
               placeholder="Mot de passe"
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              className={`w-full rounded-xl border bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-1 ${authError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-white/10 focus:border-brand-500 focus:ring-brand-500"}`}
               autoFocus
+              disabled={isAuthenticating}
             />
-            <button type="submit" className="btn-primary w-full justify-center">
-              Se connecter
+            {authError && (
+              <p className="text-left text-sm text-red-400">{authError}</p>
+            )}
+            <button type="submit" disabled={isAuthenticating || !passwordInput} className="btn-primary w-full justify-center disabled:opacity-50">
+              {isAuthenticating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Vérification…
+                </>
+              ) : (
+                "Se connecter"
+              )}
             </button>
           </form>
         </div>

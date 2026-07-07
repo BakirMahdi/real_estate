@@ -10,8 +10,12 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 let adminToken: string | null = null;
 
-export function setAdminToken(token: string) {
+export function setAdminToken(token: string | null) {
   adminToken = token;
+}
+
+export function hasAdminToken() {
+  return adminToken !== null && adminToken !== "";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

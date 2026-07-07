@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 SOURCE = "tayara"
-MAX_PAGES = 3
+MAX_PAGES = 100  # Increased to get all pages
 DETAIL_WORKERS = 8
 
 LISTING_CATEGORIES = (

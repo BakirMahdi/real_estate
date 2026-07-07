@@ -10,7 +10,7 @@ def clean_text(s):
 
 SOURCE = "expat"
 BASE_URL = "https://www.expat.com/fr/immobilier/afrique/tunisie/"
-MAX_PAGES = 3
+MAX_PAGES = 100  # Increased to get all pages
 DETAIL_WORKERS = 5
 
 _HEADERS = {

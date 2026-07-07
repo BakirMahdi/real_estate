@@ -20,12 +20,14 @@ export function LoginPage() {
       if (isLogin) {
         const response = await api.login(username, password);
         setAuthToken(response.access_token);
+        localStorage.setItem("user_role", response.role);
         navigate("/dashboard");
       } else {
         await api.register(username, password);
         // Auto-login after registration
         const response = await api.login(username, password);
         setAuthToken(response.access_token);
+        localStorage.setItem("user_role", response.role);
         navigate("/dashboard");
       }
     } catch (err) {

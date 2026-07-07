@@ -41,7 +41,15 @@ def verify_token(token: str) -> Optional[dict]:
         return None
 
 
-def create_user(username: str, password: str) -> bool:
+def is_admin(token: str) -> bool:
+    """Check if the token belongs to an admin user."""
+    payload = verify_token(token)
+    if not payload:
+        return False
+    return payload.get("role") == "admin"
+
+
+def create_user(username: str, password: str, role: str = "user") -> bool:
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -56,8 +64,8 @@ def create_user(username: str, password: str) -> bool:
         # Create new user
         password_hash = get_password_hash(password)
         cur.execute(
-            "INSERT INTO users (username, password_hash) VALUES (%s, %s)",
-            (username, password_hash)
+            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, %s)",
+            (username, password_hash, role)
         )
         conn.commit()
         cur.close()
@@ -74,7 +82,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         cur = conn.cursor()
         
         cur.execute(
-            "SELECT id, username, password_hash FROM users WHERE username = %s",
+            "SELECT id, username, password_hash, role FROM users WHERE username = %s",
             (username,)
         )
         user = cur.fetchone()
@@ -84,12 +92,12 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         if not user:
             return None
         
-        user_id, user_username, password_hash = user
+        user_id, user_username, password_hash, role = user
         
         if not verify_password(password, password_hash):
             return None
         
-        return {"id": user_id, "username": user_username}
+        return {"id": user_id, "username": user_username, "role": role}
     except Exception as e:
         print(f"Error authenticating user: {e}")
         return None

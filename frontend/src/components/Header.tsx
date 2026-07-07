@@ -1,15 +1,16 @@
 import { Link, useLocation } from "react-router-dom";
 import { Building2, LayoutDashboard, Search, LogIn, LogOut } from "lucide-react";
-import { isAuthenticated, logout } from "../api/client";
+import { isAuthenticated, logout, isAdmin } from "../api/client";
 
 const nav = [
   { to: "/", label: "Annonces", icon: Search },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
 ];
 
 export function Header() {
   const location = useLocation();
   const authenticated = isAuthenticated();
+  const userIsAdmin = isAdmin();
 
   const handleLogout = () => {
     logout();
@@ -32,7 +33,8 @@ export function Header() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {nav.map(({ to, label, icon: Icon }) => {
+          {nav.map(({ to, label, icon: Icon, adminOnly }) => {
+            if (adminOnly && !userIsAdmin) return null;
             const active = location.pathname === to;
             return (
               <Link

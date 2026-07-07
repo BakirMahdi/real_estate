@@ -8,16 +8,16 @@ from .scrapers.mubawab import scrape_mubawab
 from .scrapers.affare import scrape_affare
 from .scrapers.expat import scrape_expat
 from .insert import bulk_get_existing_ids, bulk_insert_properties, bulk_get_latest_properties, is_same_property
-from .queries import get_properties, get_property_by_id, get_all_properties
+from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_by_id, archive_property, unarchive_property
 from .db import get_conn
 from .sample_log import log_scrape_samples
-from .auth import create_user, authenticate_user, create_access_token, verify_token
+from .auth import create_user, authenticate_user, create_access_token, verify_token, verify_token as verify_jwt_token, is_admin
 from pydantic import BaseModel
 import asyncio
 import time
 import os
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # On Windows networks with custom root CAs, this lets requests trust the OS store.
 try:
@@ -103,34 +103,77 @@ scrape_status_state = {
     "error": None,
 }
 
-async def hourly_scheduler():
+async def weekly_scheduler():
     global next_scrape_time
     while True:
-        now_ts = time.time()
-        next_scrape_time = ((now_ts // 3600) + 1) * 3600
-        delay = next_scrape_time - now_ts
-        if delay <= 0:
-            delay = 3600
+        now = datetime.now()
+        # Calculate next Monday at 00:00
+        days_until_monday = (0 - now.weekday()) % 7  # 0 = Monday
+        if days_until_monday == 0:
+            # If today is Monday, check if it's already past 00:00
+            if now.hour >= 0:
+                days_until_monday = 7  # Next Monday
         
-        print(f"[Scheduler] Next auto-scrape scheduled at timestamp {next_scrape_time} ({datetime.fromtimestamp(next_scrape_time).isoformat()}) (in {delay:.2f} seconds)")
+        next_monday = now.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days_until_monday)
+        next_scrape_time = next_monday.timestamp()
+        delay = (next_scrape_time - now.timestamp())
+        
+        if delay <= 0:
+            delay = 7 * 24 * 3600  # 7 days in seconds
+        
+        print(f"[Scheduler] Next auto-scrape scheduled for Monday at 00:00: {next_monday.isoformat()} (in {delay:.2f} seconds)")
         try:
             await asyncio.sleep(delay)
         except asyncio.CancelledError:
             break
             
-        next_scrape_time = next_scrape_time + 3600
-        
         if not scrape_status_state["is_scraping"]:
-            print(f"[Scheduler] Starting automatic hourly scrape at {datetime.now().isoformat()}...")
+            print(f"[Scheduler] Starting automatic weekly scrape at {datetime.now().isoformat()}...")
             asyncio.create_task(asyncio.to_thread(_run_scrape_task))
         else:
-            print(f"[Scheduler] Automatic hourly scrape skipped because a scrape is already running.")
+            print(f"[Scheduler] Automatic weekly scrape skipped because a scrape is already running.")
             
         await asyncio.sleep(5)
 
 @app.on_event("startup")
 async def startup_event():
-    asyncio.create_task(hourly_scheduler())
+    asyncio.create_task(weekly_scheduler())
+
+def archive_missing_ads(found_ad_ids):
+    """Archive ads that are in the DB but were not found in the current scrape."""
+    if not found_ad_ids:
+        return 0
+    
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        
+        # Get all non-archived ad_ids from DB
+        cur.execute("SELECT source, ad_id FROM properties WHERE archived = FALSE")
+        all_db_ads = {(row[0], row[1]) for row in cur.fetchall()}
+        
+        # Find ads that should be archived (in DB but not in current scrape)
+        to_archive = []
+        for source, ad_id in all_db_ads:
+            if (source, ad_id) not in found_ad_ids:
+                to_archive.append((source, ad_id))
+        
+        # Archive them
+        if to_archive:
+            for source, ad_id in to_archive:
+                cur.execute(
+                    "UPDATE properties SET archived = TRUE WHERE source = %s AND ad_id = %s",
+                    (source, ad_id)
+                )
+            conn.commit()
+        
+        cur.close()
+        conn.close()
+        return len(to_archive)
+    except Exception as e:
+        print(f"Error archiving ads: {e}")
+        return 0
+
 
 def _run_scrape_task():
     try:
@@ -140,6 +183,9 @@ def _run_scrape_task():
 
         results = []
         source_samples = []
+        
+        # Track all ad_ids found in this scrape for archiving later
+        found_ad_ids = set()
 
         # Run all scrapers in parallel
         scrapers = [scrape_tayara, scrape_mubawab, scrape_affare, scrape_expat]
@@ -171,13 +217,14 @@ def _run_scrape_task():
             all_ad_ids = [item["ad_id"] for item in data if item.get("ad_id")]
             latest_properties = bulk_get_latest_properties(source_tag, all_ad_ids)
 
-            # Filter scraped items: skip if identical to latest DB, insert otherwise
+            # Filter scraped items: insert if new or if values changed (versioning)
             new_items = []
             skipped = 0
             for item in data:
                 ad_id = item.get("ad_id")
                 if not ad_id:
                     continue
+                found_ad_ids.add((source_tag, ad_id))
                 latest_db = latest_properties.get(ad_id)
                 if latest_db is None:
                     new_items.append(item)
@@ -185,6 +232,7 @@ def _run_scrape_task():
                     if is_same_property(item, latest_db):
                         skipped += 1
                     else:
+                        # Values changed - insert as new version
                         new_items.append(item)
 
             no_id_errors = sum(1 for item in data if not item.get("ad_id"))
@@ -204,11 +252,25 @@ def _run_scrape_task():
                 "inserted": inserted,
                 "skipped": skipped,
                 "errors": errors,
+                "archived": 0,  # Will be updated below
                 "message": (
                     "skipped = annonces déjà présentes en base (doublons source+ad_id)"
                     if skipped
                     else None
                 ),
+            })
+
+        # Archive ads that were not found in this scrape
+        archived_count = archive_missing_ads(found_ad_ids)
+        if archived_count > 0:
+            results.append({
+                "source": "archiving",
+                "count": 0,
+                "inserted": 0,
+                "skipped": 0,
+                "errors": 0,
+                "archived": archived_count,
+                "message": f"Archived {archived_count} ads not found in scrape"
             })
 
         log_scrape_samples(source_samples)
@@ -301,5 +363,52 @@ def login(user: UserLogin):
     if not authenticated_user:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     
-    access_token = create_access_token(data={"sub": authenticated_user["username"]})
-    return {"access_token": access_token, "token_type": "bearer"}
+    access_token = create_access_token(data={"sub": authenticated_user["username"], "role": authenticated_user["role"]})
+    return {"access_token": access_token, "token_type": "bearer", "role": authenticated_user["role"]}
+
+
+def get_current_user_role(request: Request):
+    """Extract and verify the user's role from the JWT token."""
+    auth_header = request.headers.get("authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return None
+    
+    token = auth_header.split(" ")[1]
+    payload = verify_token(token)
+    if not payload:
+        return None
+    
+    return payload.get("role")
+
+
+@app.get("/admin/search")
+def admin_search(search_id: str, include_archived: bool = False, request: Request = None):
+    """Search for properties by ID or ad_id. Admin only."""
+    role = get_current_user_role(request)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    properties = search_properties_by_id(search_id, include_archived=include_archived)
+    return {"count": len(properties), "items": properties}
+
+
+@app.post("/admin/{property_id}/archive")
+def admin_archive_property(property_id: int, request: Request = None):
+    """Archive a property by ID. Admin only."""
+    role = get_current_user_role(request)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    archive_property(property_id)
+    return {"message": "Property archived successfully"}
+
+
+@app.post("/admin/{property_id}/unarchive")
+def admin_unarchive_property(property_id: int, request: Request = None):
+    """Unarchive a property by ID. Admin only."""
+    role = get_current_user_role(request)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    unarchive_property(property_id)
+    return {"message": "Property unarchived successfully"}

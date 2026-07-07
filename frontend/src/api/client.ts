@@ -32,6 +32,12 @@ export function isAuthenticated() {
 
 export function logout() {
   setAuthToken(null);
+  localStorage.removeItem("user_role");
+}
+
+export function isAdmin() {
+  const role = localStorage.getItem("user_role");
+  return role === "admin";
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -87,8 +93,18 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   login: (username: string, password: string) =>
-    request<{ access_token: string; token_type: string }>("/login", {
+    request<{ access_token: string; token_type: string; role: string }>("/login", {
       method: "POST",
       body: JSON.stringify({ username, password }),
+    }),
+  adminSearch: (searchId: string, includeArchived: boolean = false) =>
+    request<{ count: number; items: Property[] }>(`/admin/search?search_id=${searchId}&include_archived=${includeArchived}`),
+  adminArchive: (propertyId: number) =>
+    request<{ message: string }>(`/admin/${propertyId}/archive`, {
+      method: "POST",
+    }),
+  adminUnarchive: (propertyId: number) =>
+    request<{ message: string }>(`/admin/${propertyId}/unarchive`, {
+      method: "POST",
     }),
 };

@@ -193,6 +193,7 @@ export function DashboardPage() {
       // Store the token
       const token = response.access_token;
       localStorage.setItem("auth_token", token);
+      localStorage.setItem("user_role", response.role);
       setNeedsAuth(false);
       refresh();
     } catch (err) {
@@ -318,7 +319,7 @@ export function DashboardPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-slate-300">Scrape automatique</p>
-              <p className="text-xs text-slate-500">Chaque début d'heure (ex: 00h00, 01h00…)</p>
+              <p className="text-xs text-slate-500">Chaque lundi à 00h00</p>
             </div>
           </div>
           <div className="flex flex-col sm:items-end">
@@ -367,6 +368,7 @@ export function DashboardPage() {
                   <th className="px-4 py-3 font-medium">Insérées</th>
                   <th className="px-4 py-3 font-medium">Déjà en base</th>
                   <th className="px-4 py-3 font-medium">Erreurs</th>
+                  <th className="px-4 py-3 font-medium">Archivées</th>
                 </tr>
               </thead>
               <tbody>
@@ -378,7 +380,7 @@ export function DashboardPage() {
                         {sourceLabel(sourceKey)}
                       </td>
                       {result.error ? (
-                        <td colSpan={4} className="px-4 py-3 text-red-400">
+                        <td colSpan={5} className="px-4 py-3 text-red-400">
                           {result.error}
                         </td>
                       ) : (
@@ -387,6 +389,7 @@ export function DashboardPage() {
                           <td className="px-4 py-3 text-emerald-400">{result.inserted}</td>
                           <td className="px-4 py-3 text-slate-400">{result.skipped}</td>
                           <td className="px-4 py-3 text-amber-400">{result.errors}</td>
+                          <td className="px-4 py-3 text-violet-400">{result.archived || 0}</td>
                         </>
                       )}
                     </tr>

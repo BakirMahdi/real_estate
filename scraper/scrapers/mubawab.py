@@ -8,7 +8,7 @@ from requests import RequestException
 
 BASE_URL = "https://www.mubawab.tn"
 SOURCE = "mubawab"
-MAX_PAGES = 1
+MAX_PAGES = 100  # Increased to get all pages
 DETAIL_WORKERS = 8
 
 LISTING_CATEGORIES = (

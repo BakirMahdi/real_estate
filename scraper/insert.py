@@ -211,9 +211,9 @@ def bulk_insert_properties(items):
                     source, ad_id, property_type, listing_type,
                     title, description, price, area, city, address, url,
                     bedrooms, garage, furnished, terrace, pool,
-                    subcategory, images
+                    subcategory, images, archived
                 )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 data["source"],
                 data["ad_id"],
@@ -229,6 +229,7 @@ def bulk_insert_properties(items):
                 *house_land_values,
                 data.get("subcategory"),
                 data.get("images", []),
+                False,  # archived = False for new inserts
             ))
             inserted += 1
         except Exception as e:

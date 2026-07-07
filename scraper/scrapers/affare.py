@@ -11,7 +11,7 @@ def clean_text(s):
 
 SOURCE = "affare"
 BASE_URL = "https://www.affare.tn/petites-annonces/tunisie/immobilier?o="
-MAX_PAGES = 3
+MAX_PAGES = 100  # Increased to get all pages
 DETAIL_WORKERS = 5
 
 _HEADERS = {

@@ -24,7 +24,8 @@ _PROPERTY_COLUMNS = """
     terrace,
     pool,
     subcategory,
-    images
+    images,
+    archived
 """
 
 
@@ -52,7 +53,7 @@ def get_properties(
             FROM properties
             ORDER BY source, ad_id, id DESC
         ) properties
-        WHERE 1=1
+        WHERE archived = FALSE
     """
     params = []
 
@@ -127,33 +128,146 @@ def get_property_by_id(property_id):
     return result
 
 
-def get_all_properties():
+def get_all_properties(include_archived=False):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT
-            id,
-            source,
-            ad_id,
-            property_type,
-            listing_type,
-            title,
-            description,
-            price,
-            area,
-            city,
-            address,
-            url,
-            subcategory,
-            images
-        FROM properties
-        ORDER BY id
-        """
-    )
+    
+    if include_archived:
+        cur.execute(
+            """
+            SELECT
+                id,
+                source,
+                ad_id,
+                property_type,
+                listing_type,
+                title,
+                description,
+                price,
+                area,
+                city,
+                address,
+                url,
+                subcategory,
+                images,
+                archived
+            FROM properties
+            ORDER BY id
+            """
+        )
+    else:
+        cur.execute(
+            """
+            SELECT
+                id,
+                source,
+                ad_id,
+                property_type,
+                listing_type,
+                title,
+                description,
+                price,
+                area,
+                city,
+                address,
+                url,
+                subcategory,
+                images,
+                archived
+            FROM properties
+            WHERE archived = FALSE
+            ORDER BY id
+            """
+        )
+    
     rows = cur.fetchall()
     properties = [_row_to_dict(cur, row) for row in rows]
 
     cur.close()
     conn.close()
     return properties
+
+
+def search_properties_by_id(search_id, include_archived=False):
+    """Search for properties by ID (exact match) or ad_id (exact match). Admin only."""
+    conn = get_conn()
+    cur = conn.cursor()
+    
+    # Try to convert to integer for exact ID match
+    try:
+        search_id_int = int(search_id)
+        if include_archived:
+            cur.execute(
+                f"""
+                SELECT {_PROPERTY_COLUMNS}
+                FROM properties
+                WHERE id = %s OR ad_id = %s
+                ORDER BY id DESC
+                """,
+                (search_id_int, search_id)
+            )
+        else:
+            cur.execute(
+                f"""
+                SELECT {_PROPERTY_COLUMNS}
+                FROM properties
+                WHERE (id = %s OR ad_id = %s) AND archived = FALSE
+                ORDER BY id DESC
+                """,
+                (search_id_int, search_id)
+            )
+    except ValueError:
+        # Not an integer, search by ad_id only with exact match
+        if include_archived:
+            cur.execute(
+                f"""
+                SELECT {_PROPERTY_COLUMNS}
+                FROM properties
+                WHERE ad_id = %s
+                ORDER BY id DESC
+                """,
+                (search_id,)
+            )
+        else:
+            cur.execute(
+                f"""
+                SELECT {_PROPERTY_COLUMNS}
+                FROM properties
+                WHERE ad_id = %s AND archived = FALSE
+                ORDER BY id DESC
+                """,
+                (search_id,)
+            )
+    
+    rows = cur.fetchall()
+    properties = [_row_to_dict(cur, row) for row in rows]
+
+    cur.close()
+    conn.close()
+    return properties
+
+
+def archive_property(property_id):
+    """Archive a property by ID. Admin only."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE properties SET archived = TRUE WHERE id = %s",
+        (property_id,)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
+def unarchive_property(property_id):
+    """Unarchive a property by ID. Admin only."""
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "UPDATE properties SET archived = FALSE WHERE id = %s",
+        (property_id,)
+    )
+    conn.commit()
+    cur.close()
+    conn.close()

@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, BedDouble, MapPin, Maximize2 } from "lucide-react";
+import { ArrowUpRight, BedDouble, MapPin, Maximize2, Archive, ArchiveRestore } from "lucide-react";
 import type { Property } from "../types/property";
 import {
   formatArea,
@@ -14,86 +14,128 @@ import {
 interface PropertyCardProps {
   property: Property;
   index?: number;
+  isAdmin?: boolean;
+  onArchive?: (propertyId: number) => Promise<void>;
+  onUnarchive?: (propertyId: number) => Promise<void>;
 }
 
-export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
+export function PropertyCard({ property, index = 0, isAdmin = false, onArchive, onUnarchive }: PropertyCardProps) {
   const gradient = propertyGradient(property.id);
   const mainImage = property.images && property.images.length > 0 ? property.images[0] : null;
 
+  const handleArchiveClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onArchive) onArchive(property.id);
+  };
+
+  const handleUnarchiveClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onUnarchive) onUnarchive(property.id);
+  };
+
   return (
-    <Link
-      to={`/property/${property.id}`}
-      className="group block animate-slide-up overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
+    <div className="group block animate-slide-up overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
       style={{ animationDelay: `${index * 50}ms` }}
     >
-      <div className="relative h-44 w-full overflow-hidden bg-slate-800">
-        {mainImage ? (
-          <img
-            src={mainImage}
-            alt={property.title}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-            loading="lazy"
-          />
-        ) : (
-          <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`}>
-            <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMTBoMTBNMTAgMHYxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PC9zdmc+')] opacity-50" />
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/30" />
-        <div className="absolute left-4 top-4 flex gap-2">
-          <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-brand-300 backdrop-blur">
-            {sourceLabel(property.source)}
-          </span>
-          <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-slate-300 backdrop-blur">
-            {subcategoryLabel(property.subcategory, property.property_type)}
-          </span>
-          <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-amber-300 backdrop-blur">
-            {listingTypeLabel(property.listing_type)}
-          </span>
-        </div>
-        <div className="absolute bottom-4 left-4 right-4">
-          <p className="font-display text-2xl font-semibold text-white drop-shadow">
-            {formatPrice(property.price)}
-          </p>
-        </div>
-      </div>
-
-      <div className="p-5">
-        <h3 className="mb-2 line-clamp-2 font-semibold leading-snug text-white group-hover:text-brand-200">
-          {property.title}
-        </h3>
-
-        <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-400">
-          <MapPin className="h-3.5 w-3.5 shrink-0 text-brand-500" />
-          <span className="truncate">{property.address || property.city || "—"}</span>
-        </div>
-
-        {property.description && (
-          <p className="mb-4 line-clamp-2 text-sm text-slate-500">
-            {truncate(property.description, 100)}
-          </p>
-        )}
-
-        <div className="mb-4 flex flex-wrap gap-3 text-xs text-slate-400">
-          <span className="flex items-center gap-1">
-            <Maximize2 className="h-3.5 w-3.5" />
-            {formatArea(property.area)}
-          </span>
-          {property.bedrooms != null && property.property_type === "house" && (
-            <span className="flex items-center gap-1">
-              <BedDouble className="h-3.5 w-3.5" />
-              {property.bedrooms} ch.
+      <Link to={`/property/${property.id}`} className="block">
+        <div className="relative h-44 w-full overflow-hidden bg-slate-800">
+          {mainImage ? (
+            <img
+              src={mainImage}
+              alt={property.title}
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+              loading="lazy"
+            />
+          ) : (
+            <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`}>
+              <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMTBoMTBNMTAgMHYxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PC9zdmc+')] opacity-50" />
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-slate-950/30" />
+          <div className="absolute left-4 top-4 flex gap-2">
+            <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-brand-300 backdrop-blur">
+              {sourceLabel(property.source)}
             </span>
+            <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-slate-300 backdrop-blur">
+              {subcategoryLabel(property.subcategory, property.property_type)}
+            </span>
+            <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-amber-300 backdrop-blur">
+              {listingTypeLabel(property.listing_type)}
+            </span>
+            {property.archived && (
+              <span className="rounded-lg bg-red-600/70 px-2.5 py-1 text-xs font-medium text-white backdrop-blur">
+                Archivé
+              </span>
+            )}
+          </div>
+          <div className="absolute bottom-4 left-4 right-4">
+            <p className="font-display text-2xl font-semibold text-white drop-shadow">
+              {formatPrice(property.price)}
+            </p>
+          </div>
+        </div>
+
+        <div className="p-5">
+          <h3 className="mb-2 line-clamp-2 font-semibold leading-snug text-white group-hover:text-brand-200">
+            {property.title}
+          </h3>
+
+          <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-400">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-brand-500" />
+            <span className="truncate">{property.address || property.city || "—"}</span>
+          </div>
+
+          {property.description && (
+            <p className="mb-4 line-clamp-2 text-sm text-slate-500">
+              {truncate(property.description, 100)}
+            </p>
+          )}
+
+          <div className="mb-4 flex flex-wrap gap-3 text-xs text-slate-400">
+            <span className="flex items-center gap-1">
+              <Maximize2 className="h-3.5 w-3.5" />
+              {formatArea(property.area)}
+            </span>
+            {property.bedrooms != null && property.property_type === "house" && (
+              <span className="flex items-center gap-1">
+                <BedDouble className="h-3.5 w-3.5" />
+                {property.bedrooms} ch.
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-4">
+            <span className="text-sm font-medium text-brand-400 transition group-hover:text-brand-300">
+              Voir détails
+            </span>
+            <ArrowUpRight className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-400" />
+          </div>
+        </div>
+      </Link>
+
+      {isAdmin && (
+        <div className="border-t border-white/5 p-3 bg-slate-900/60">
+          {property.archived ? (
+            <button
+              onClick={handleUnarchiveClick}
+              className="flex items-center gap-2 w-full justify-center rounded-lg bg-emerald-600/20 px-3 py-2 text-xs text-emerald-400 hover:bg-emerald-600/30 transition"
+            >
+              <ArchiveRestore className="h-3.5 w-3.5" />
+              Restaurer
+            </button>
+          ) : (
+            <button
+              onClick={handleArchiveClick}
+              className="flex items-center gap-2 w-full justify-center rounded-lg bg-amber-600/20 px-3 py-2 text-xs text-amber-400 hover:bg-amber-600/30 transition"
+            >
+              <Archive className="h-3.5 w-3.5" />
+              Archiver
+            </button>
           )}
         </div>
-
-        <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-4">
-          <span className="text-sm font-medium text-brand-400 transition group-hover:text-brand-300">
-            Voir détails
-          </span>
-          <ArrowUpRight className="h-4 w-4 text-slate-500 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-400" />
-        </div>
-      </div>
-    </Link>
+      )}
+    </div>
   );
 }

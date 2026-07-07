@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS properties (
     pool BOOLEAN,
     subcategory TEXT,
     images TEXT[] DEFAULT '{}',
-    UNIQUE(source, ad_id)
+    archived BOOLEAN DEFAULT FALSE
 );
 
 CREATE INDEX IF NOT EXISTS idx_properties_city ON properties(city);

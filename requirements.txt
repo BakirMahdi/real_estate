@@ -5,3 +5,5 @@ requests
 python-certifi-win32
 lxml
 psycopg2-binary
+python-jose[cryptography]
+bcrypt

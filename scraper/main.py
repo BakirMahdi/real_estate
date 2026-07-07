@@ -1,6 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from .scrapers.tayara import scrape_tayara
 from .scrapers.mubawab import scrape_mubawab
@@ -10,6 +11,8 @@ from .insert import bulk_get_existing_ids, bulk_insert_properties, bulk_get_late
 from .queries import get_properties, get_property_by_id, get_all_properties
 from .db import get_conn
 from .sample_log import log_scrape_samples
+from .auth import create_user, authenticate_user, create_access_token, verify_token
+from pydantic import BaseModel
 import asyncio
 import time
 import os
@@ -33,6 +36,15 @@ app.add_middleware(
 )
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+security = HTTPBearer()
+
+class UserRegister(BaseModel):
+    username: str
+    password: str
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -40,11 +52,20 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.url.path.startswith("/scrape"):
             # Exclude OPTIONS for CORS preflight
             if request.method != "OPTIONS":
+                # Check for JWT token first, fall back to API key for backward compatibility
+                auth_header = request.headers.get("authorization")
+                if auth_header and auth_header.startswith("Bearer "):
+                    token = auth_header.split(" ")[1]
+                    payload = verify_token(token)
+                    if payload:
+                        return await call_next(request)
+                
+                # Fall back to API key
                 api_key = request.headers.get("x-api-key")
                 if api_key != ADMIN_PASSWORD:
                     return JSONResponse(
                         status_code=401,
-                        content={"detail": "Unauthorized: Invalid or missing API key"}
+                        content={"detail": "Unauthorized: Invalid or missing token/API key"}
                     )
         return await call_next(request)
 
@@ -258,3 +279,27 @@ def property_detail(property_id: int):
     if not property_data:
         raise HTTPException(status_code=404, detail="Property not found")
     return property_data
+
+
+@app.post("/register")
+def register(user: UserRegister):
+    if len(user.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+    if len(user.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    
+    success = create_user(user.username, user.password)
+    if not success:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    return {"message": "User created successfully"}
+
+
+@app.post("/login")
+def login(user: UserLogin):
+    authenticated_user = authenticate_user(user.username, user.password)
+    if not authenticated_user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    
+    access_token = create_access_token(data={"sub": authenticated_user["username"]})
+    return {"access_token": access_token, "token_type": "bearer"}

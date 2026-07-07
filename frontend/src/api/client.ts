@@ -8,21 +8,39 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
-let adminToken: string | null = null;
+let authToken: string | null = null;
 
-export function setAdminToken(token: string | null) {
-  adminToken = token;
+export function setAuthToken(token: string | null) {
+  authToken = token;
+  if (token) {
+    localStorage.setItem("auth_token", token);
+  } else {
+    localStorage.removeItem("auth_token");
+  }
 }
 
-export function hasAdminToken() {
-  return adminToken !== null && adminToken !== "";
+export function getAuthToken() {
+  if (!authToken) {
+    authToken = localStorage.getItem("auth_token");
+  }
+  return authToken;
+}
+
+export function isAuthenticated() {
+  return getAuthToken() !== null && getAuthToken() !== "";
+}
+
+export function logout() {
+  setAuthToken(null);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
   
-  if (adminToken) {
-    headers.set("x-api-key", adminToken);
+  const token = getAuthToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
@@ -63,4 +81,14 @@ export const api = {
       `/properties/search${buildQuery(filters as Record<string, string | number | undefined>)}`,
     ),
   getProperty: (id: number) => request<Property>(`/properties/${id}`),
+  register: (username: string, password: string) =>
+    request<{ message: string }>("/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
+  login: (username: string, password: string) =>
+    request<{ access_token: string; token_type: string }>("/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    }),
 };

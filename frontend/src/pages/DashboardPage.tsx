@@ -10,7 +10,7 @@ import {
   XCircle,
   Lock,
 } from "lucide-react";
-import { api, hasAdminToken, setAdminToken } from "../api/client";
+import { api, isAuthenticated, logout } from "../api/client";
 import { sourceLabel } from "../lib/format";
 import type { HealthStatus, ScrapeResult } from "../types/property";
 
@@ -40,13 +40,16 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [nextScrapeTime, setNextScrapeTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [needsAuth, setNeedsAuth] = useState(!hasAdminToken());
+  const [needsAuth, setNeedsAuth] = useState(!isAuthenticated());
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!hasAdminToken()) return;
+    if (!isAuthenticated()) {
+      setNeedsAuth(true);
+      return;
+    }
     setLoading(true);
     try {
       const [health, dbStatus, props, scrapeStatus] = await Promise.all([
@@ -70,6 +73,7 @@ export function DashboardPage() {
     } catch (err) {
       if (err instanceof Error && err.message === "UNAUTHORIZED") {
         setNeedsAuth(true);
+        logout();
       } else {
         setApiHealth(null);
         setDbHealth(null);
@@ -116,6 +120,7 @@ export function DashboardPage() {
         } catch (err) {
           if (err instanceof Error && err.message === "UNAUTHORIZED") {
             setNeedsAuth(true);
+            logout();
           }
           console.error("Error polling scrape status:", err);
         }
@@ -169,6 +174,7 @@ export function DashboardPage() {
     } catch (err) {
       if (err instanceof Error && err.message === "UNAUTHORIZED") {
         setNeedsAuth(true);
+        logout();
       } else {
         setScrapeError(err instanceof Error ? err.message : "Échec du démarrage du scrape");
       }
@@ -181,16 +187,16 @@ export function DashboardPage() {
     
     setAuthError(null);
     setIsAuthenticating(true);
-    setAdminToken(passwordInput);
     
     try {
-      // Test the token
-      await api.getScrapeStatus();
+      const response = await api.login("admin", passwordInput);
+      // Store the token
+      const token = response.access_token;
+      localStorage.setItem("auth_token", token);
       setNeedsAuth(false);
       refresh();
     } catch (err) {
       setAuthError("Mot de passe incorrect. Veuillez réessayer.");
-      setAdminToken(null);
     } finally {
       setIsAuthenticating(false);
     }
@@ -206,9 +212,9 @@ export function DashboardPage() {
           <div className="mb-4 mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/20">
             <Lock className="h-6 w-6 text-brand-400" />
           </div>
-          <h2 className="mb-2 font-display text-2xl font-semibold text-white">Accès restreint</h2>
+          <h2 className="mb-2 font-display text-2xl font-semibold text-white">Authentification requise</h2>
           <p className="mb-6 text-sm text-slate-400">
-            Veuillez entrer le mot de passe administrateur pour accéder au dashboard.
+            Veuillez vous connecter pour accéder au dashboard.
           </p>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <input

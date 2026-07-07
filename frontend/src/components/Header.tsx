@@ -1,5 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
-import { Building2, LayoutDashboard, Search } from "lucide-react";
+import { Building2, LayoutDashboard, Search, LogIn, LogOut } from "lucide-react";
+import { isAuthenticated, logout } from "../api/client";
 
 const nav = [
   { to: "/", label: "Annonces", icon: Search },
@@ -8,6 +9,12 @@ const nav = [
 
 export function Header() {
   const location = useLocation();
+  const authenticated = isAuthenticated();
+
+  const handleLogout = () => {
+    logout();
+    window.location.href = "/";
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-white/5 bg-slate-950/80 backdrop-blur-xl">
@@ -42,6 +49,23 @@ export function Header() {
               </Link>
             );
           })}
+          {authenticated ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-white"
+            >
+              <LogOut className="h-4 w-4" />
+              <span className="hidden sm:inline">Déconnexion</span>
+            </button>
+          ) : (
+            <Link
+              to="/login"
+              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-slate-400 transition hover:bg-white/5 hover:text-white"
+            >
+              <LogIn className="h-4 w-4" />
+              <span className="hidden sm:inline">Connexion</span>
+            </Link>
+          )}
         </nav>
       </div>
     </header>

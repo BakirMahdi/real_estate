@@ -9,7 +9,18 @@ import type {
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, init);
+  const headers = new Headers(init?.headers);
+  
+  const token = localStorage.getItem("admin_password");
+  if (token) {
+    headers.set("x-api-key", token);
+  }
+
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+
+  if (response.status === 401) {
+    throw new Error("UNAUTHORIZED");
+  }
 
   if (!response.ok) {
     const detail = await response.text();

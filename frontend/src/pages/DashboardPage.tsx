@@ -8,6 +8,7 @@ import {
   Loader2,
   Server,
   XCircle,
+  Lock,
 } from "lucide-react";
 import { api } from "../api/client";
 import { sourceLabel } from "../lib/format";
@@ -39,9 +40,12 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [nextScrapeTime, setNextScrapeTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [passwordInput, setPasswordInput] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setNeedsAuth(false);
     try {
       const [health, dbStatus, props, scrapeStatus] = await Promise.all([
         api.health(),
@@ -61,9 +65,13 @@ export function DashboardPage() {
       } else if (scrapeStatus.results && !scrapeResults) {
         setScrapeResults(scrapeStatus.results);
       }
-    } catch {
-      setApiHealth(null);
-      setDbHealth(null);
+    } catch (err) {
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+      } else {
+        setApiHealth(null);
+        setDbHealth(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -104,6 +112,9 @@ export function DashboardPage() {
             refresh();
           }
         } catch (err) {
+          if (err instanceof Error && err.message === "UNAUTHORIZED") {
+            setNeedsAuth(true);
+          }
           console.error("Error polling scrape status:", err);
         }
       }, 2000);
@@ -154,12 +165,51 @@ export function DashboardPage() {
       await api.scrape();
       setScraping(true);
     } catch (err) {
-      setScrapeError(err instanceof Error ? err.message : "Échec du démarrage du scrape");
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+      } else {
+        setScrapeError(err instanceof Error ? err.message : "Échec du démarrage du scrape");
+      }
     }
+  };
+
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem("admin_password", passwordInput);
+    refresh();
   };
 
   const apiOk = apiHealth?.status === "ok";
   const dbOk = dbHealth?.status === "ok";
+
+  if (needsAuth) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-16 sm:px-6">
+        <div className="glass rounded-2xl p-8 shadow-card text-center animate-fade-in">
+          <div className="mb-4 mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/20">
+            <Lock className="h-6 w-6 text-brand-400" />
+          </div>
+          <h2 className="mb-2 font-display text-2xl font-semibold text-white">Accès restreint</h2>
+          <p className="mb-6 text-sm text-slate-400">
+            Veuillez entrer le mot de passe administrateur pour accéder au dashboard.
+          </p>
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <input
+              type="password"
+              placeholder="Mot de passe"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              autoFocus
+            />
+            <button type="submit" className="btn-primary w-full justify-center">
+              Se connecter
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">

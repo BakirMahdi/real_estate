@@ -1,5 +1,7 @@
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from .scrapers.tayara import scrape_tayara
 from .scrapers.mubawab import scrape_mubawab
 from .scrapers.affare import scrape_affare
@@ -10,6 +12,7 @@ from .db import get_conn
 from .sample_log import log_scrape_samples
 import asyncio
 import time
+import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
@@ -28,6 +31,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # Protect /scrape and /scrape/status (but not /properties/...)
+        if request.url.path.startswith("/scrape"):
+            # Exclude OPTIONS for CORS preflight
+            if request.method != "OPTIONS":
+                api_key = request.headers.get("x-api-key")
+                if api_key != ADMIN_PASSWORD:
+                    return JSONResponse(
+                        status_code=401,
+                        content={"detail": "Unauthorized: Invalid or missing API key"}
+                    )
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
 
 @app.get("/")
 def home():

@@ -19,6 +19,18 @@ _HEADERS = {
     "Accept-Language": "fr-FR,fr;q=0.9",
 }
 
+# Amenity keywords
+_FURNISHED_KEYWORDS = ("meublé", "meublee", "meublée", "furnished")
+_TERRACE_KEYWORDS = ("terrasse", "terrace", "balcon", "balkony")
+_POOL_KEYWORDS = ("piscine", "pool")
+_GARAGE_KEYWORDS = ("garage", "parking couvert")
+
+
+def _has_keyword(text: str, keywords: tuple) -> bool:
+    t = text.lower()
+    return any(k in t for k in keywords)
+
+
 # Map URL path segments to listing types
 _RENT_PATH_KEYWORDS = ["louer", "location", "a-louer"]
 _SALE_PATH_KEYWORDS = ["vendre", "vente", "a-vendre"]
@@ -148,6 +160,13 @@ def scrape_expat_detail(url: str):
         prop_type = determine_property_type(url, title, description)
         listing_type = determine_listing_type_from_url(url, title, description)
 
+        # Amenity detection from full page text (Expat has no structured fields)
+        full_text = soup.get_text()
+        garage = _has_keyword(full_text, _GARAGE_KEYWORDS)
+        furnished = _has_keyword(full_text, _FURNISHED_KEYWORDS)
+        terrace = _has_keyword(full_text, _TERRACE_KEYWORDS)
+        pool = _has_keyword(full_text, _POOL_KEYWORDS)
+
         return {
             "source": SOURCE,
             "ad_id": ad_id,
@@ -161,10 +180,10 @@ def scrape_expat_detail(url: str):
             "address": location,
             "url": url,
             "bedrooms": bedrooms,
-            "garage": None,
-            "furnished": None,
-            "terrace": None,
-            "pool": None,
+            "garage": garage,
+            "furnished": furnished,
+            "terrace": terrace,
+            "pool": pool,
             "subcategory": prop_type,
             "images": list(dict.fromkeys(images)),  # deduplicate preserving order
         }

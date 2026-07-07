@@ -22,6 +22,28 @@ _HEADERS = {
 _RENT_KEYWORDS = ["location", "louer", "a louer", "à louer", "vacances", "lld", "ll ", "mois"]
 _SALE_KEYWORDS = ["vente", "vendre", "a vendre", "à vendre"]
 
+# Amenity keyword lists (used for text-based detection)
+_FURNISHED_KEYWORDS = ("meublé", "meublee", "meublée", "meuble", "furnished")
+_TERRACE_KEYWORDS = ("terrasse", "terrace", "balcon", "balkony")
+_POOL_KEYWORDS = ("piscine", "pool")
+_GARAGE_KEYWORDS = ("garage", "parking couvert")
+
+
+def _has_keyword(text: str, keywords: tuple) -> bool:
+    t = text.lower()
+    return any(k in t for k in keywords)
+
+
+def _parse_amenities_from_text(title: str, description: str) -> dict:
+    """Detect garage, terrace, pool from free-text when structured fields are absent."""
+    combined = f"{title} {description}"
+    return {
+        "garage": _has_keyword(combined, _GARAGE_KEYWORDS),
+        "terrace": _has_keyword(combined, _TERRACE_KEYWORDS),
+        "pool": _has_keyword(combined, _POOL_KEYWORDS),
+    }
+
+
 
 def parse_price(price_str: str) -> float:
     """Extract the first numeric value from a price string."""
@@ -126,7 +148,38 @@ def scrape_affare_detail(url: str):
         schema_item_type = item_offered.get("@type", "")
         prop_type = determine_property_type(title, description, schema_item_type)
 
-        # Area — from Schema.org floorSize
+        # --- Extract structured params (Meublée, Parking, etc.) ---
+        furnished = None
+        garage = None
+        params_divs = soup.find_all(class_=lambda c: c and "Annonce_flx" in c)
+        for div in params_divs:
+            label_div = div.find(lambda t: t.name and not t.get("class"))
+            value_div = div.find(class_=lambda c: c and "Annonce_prop" in c)
+            if not label_div or not value_div:
+                # Fall back: just scan the whole text
+                text = div.text.lower()
+                if "meublée" in text or "meublé" in text:
+                    furnished = "oui" in text
+                elif "parking" in text:
+                    garage = "oui" in text
+                continue
+            label = label_div.text.strip().lower()
+            value = value_div.text.strip().lower()
+            if "meublé" in label:
+                furnished = "oui" in value
+            elif "parking" in label:
+                garage = "oui" in value
+
+        # Text-based amenity detection from description for terrace/pool,
+        # and as fallback for furnished/garage
+        text_amenities = _parse_amenities_from_text(title, description)
+        if furnished is None:
+            furnished = _has_keyword(f"{title} {description}", _FURNISHED_KEYWORDS)
+        if garage is None:
+            garage = text_amenities["garage"]
+        terrace = text_amenities["terrace"]
+        pool = text_amenities["pool"]
+
         area = None
         floor_size = item_offered.get("floorSize", {})
         if floor_size.get("value"):
@@ -213,10 +266,10 @@ def scrape_affare_detail(url: str):
             "address": address or city or "Tunisie",
             "url": url,
             "bedrooms": bedrooms,
-            "garage": None,
-            "furnished": None,
-            "terrace": None,
-            "pool": None,
+            "garage": garage,
+            "furnished": furnished,
+            "terrace": terrace,
+            "pool": pool,
             "subcategory": prop_type,
             "images": list(dict.fromkeys(images)),  # deduplicate, preserve order
         }

@@ -175,7 +175,7 @@ export function DashboardPage() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("admin_password", passwordInput);
+    sessionStorage.setItem("admin_password", passwordInput);
     refresh();
   };
 

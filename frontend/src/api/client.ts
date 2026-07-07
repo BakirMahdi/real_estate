@@ -8,12 +8,17 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
+let adminToken: string | null = null;
+
+export function setAdminToken(token: string) {
+  adminToken = token;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   
-  const token = localStorage.getItem("admin_password");
-  if (token) {
-    headers.set("x-api-key", token);
+  if (adminToken) {
+    headers.set("x-api-key", adminToken);
   }
 
   const response = await fetch(`${API_BASE}${path}`, { ...init, headers });

@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from .scrapers.tayara import scrape_tayara
 from .scrapers.mubawab import scrape_mubawab
+from .scrapers.affare import scrape_affare
+from .scrapers.expat import scrape_expat
 from .insert import bulk_get_existing_ids, bulk_insert_properties, bulk_get_latest_properties, is_same_property
 from .queries import get_properties, get_property_by_id, get_all_properties
 from .db import get_conn
@@ -97,8 +99,8 @@ def _run_scrape_task():
         results = []
         source_samples = []
 
-        # Run both scrapers in parallel
-        scrapers = [scrape_tayara, scrape_mubawab]
+        # Run all scrapers in parallel
+        scrapers = [scrape_tayara, scrape_mubawab, scrape_affare, scrape_expat]
         scraper_data = {}
         with ThreadPoolExecutor(max_workers=len(scrapers)) as executor:
             futures = {executor.submit(s): s for s in scrapers}

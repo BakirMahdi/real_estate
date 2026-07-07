@@ -81,11 +81,16 @@ export const api = {
   healthDb: () => request<HealthStatus>("/health/db"),
   scrape: () => request<{ status: string }>("/scrape", { method: "POST" }),
   getScrapeStatus: () => request<{ is_scraping: boolean; results: ScrapeResult[] | null; error: string | null; next_scrape_time: number | null }>("/scrape/status"),
-  getAllProperties: () => request<PropertyListResponse>("/properties/all"),
-  searchProperties: (filters: SearchFilters) =>
-    request<PropertyListResponse>(
-      `/properties/search${buildQuery(filters as Record<string, string | number | undefined>)}`,
-    ),
+  getAllProperties: (includeArchived: boolean = false) => 
+    request<PropertyListResponse>(`/properties/all?include_archived=${includeArchived}`),
+  searchProperties: (filters: SearchFilters, includeArchived: boolean = false, archivedOnly: boolean = false) => {
+    const query = buildQuery({ 
+      ...filters, 
+      include_archived: includeArchived ? "true" : "false",
+      archived_only: archivedOnly ? "true" : "false"
+    } as Record<string, string | number | undefined>);
+    return request<PropertyListResponse>(`/properties/search${query}`);
+  },
   getProperty: (id: number) => request<Property>(`/properties/${id}`),
   register: (username: string, password: string) =>
     request<{ message: string }>("/register", {

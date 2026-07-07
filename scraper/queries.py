@@ -42,6 +42,8 @@ def get_properties(
     subcategory=None,
     limit=20,
     offset=0,
+    include_archived=False,
+    archived_only=False,
 ):
     conn = get_conn()
     cur = conn.cursor()
@@ -53,9 +55,14 @@ def get_properties(
             FROM properties
             ORDER BY source, ad_id, id DESC
         ) properties
-        WHERE archived = FALSE
+        WHERE 1=1
     """
     params = []
+
+    if archived_only:
+        sql += " AND archived = TRUE"
+    elif not include_archived:
+        sql += " AND archived = FALSE"
 
     if city:
         sql += " AND LOWER(city) = LOWER(%s)"

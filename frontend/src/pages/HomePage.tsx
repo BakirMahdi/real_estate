@@ -24,11 +24,12 @@ export function HomePage() {
   const [searchResults, setSearchResults] = useState<Property[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [showAdminSearch, setShowAdminSearch] = useState(false);
+  const [showArchivedOnly, setShowArchivedOnly] = useState(false);
   const userIsAdmin = isAdmin();
 
   const loadCities = useCallback(async () => {
     try {
-      const data = await api.getAllProperties();
+      const data = await api.getAllProperties(true);
       const unique = [
         ...new Set(
           data.items.map((p) => p.city).filter((c): c is string => Boolean(c)),
@@ -46,7 +47,7 @@ export function HomePage() {
       setError(null);
 
       try {
-        const data = await api.searchProperties(activeFilters);
+        const data = await api.searchProperties(activeFilters, userIsAdmin, showArchivedOnly);
         setTotal(data.count);
         setProperties(data.items);
       } catch (err) {
@@ -55,7 +56,7 @@ export function HomePage() {
         setLoading(false);
       }
     },
-    [],
+    [userIsAdmin, showArchivedOnly],
   );
 
   useEffect(() => {
@@ -90,7 +91,14 @@ export function HomePage() {
       if (showAdminSearch) {
         handleAdminSearch();
       } else {
-        loadProperties(filters);
+        // Update local state directly to avoid flicker
+        setProperties(prev => prev.map(p => 
+          p.id === propertyId ? { ...p, archived: true } : p
+        ));
+        // If showing only archived, reload to remove the now-archived item
+        if (showArchivedOnly) {
+          loadProperties(filters);
+        }
       }
     } catch (err) {
       console.error("Archive error:", err);
@@ -103,7 +111,14 @@ export function HomePage() {
       if (showAdminSearch) {
         handleAdminSearch();
       } else {
-        loadProperties(filters);
+        // Update local state directly to avoid flicker
+        setProperties(prev => prev.map(p => 
+          p.id === propertyId ? { ...p, archived: false } : p
+        ));
+        // If showing only archived, reload to remove the now-unarchived item
+        if (showArchivedOnly) {
+          loadProperties(filters);
+        }
       }
     } catch (err) {
       console.error("Unarchive error:", err);
@@ -175,34 +190,45 @@ export function HomePage() {
 
       {userIsAdmin && (
         <div className="mb-6 glass rounded-xl p-4">
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Rechercher par ID (admin only)..."
-              value={searchId}
-              onChange={(e) => setSearchId(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAdminSearch()}
-              className="flex-1 rounded-lg border bg-slate-900/50 px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 border-white/10 focus:border-brand-500 focus:ring-brand-500"
-            />
-            <button
-              onClick={handleAdminSearch}
-              disabled={searchLoading || !searchId.trim()}
-              className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-            >
-              <Search className="h-4 w-4" />
-            </button>
-            {showAdminSearch && (
+          <div className="flex flex-wrap gap-4 items-center">
+            <div className="flex gap-2 flex-1 min-w-[200px]">
+              <input
+                type="text"
+                placeholder="Rechercher par ID (admin only)..."
+                value={searchId}
+                onChange={(e) => setSearchId(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAdminSearch()}
+                className="flex-1 rounded-lg border bg-slate-900/50 px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 border-white/10 focus:border-brand-500 focus:ring-brand-500"
+              />
               <button
-                onClick={() => {
-                  setShowAdminSearch(false);
-                  setSearchResults([]);
-                  setSearchId("");
-                }}
-                className="px-4 py-2 text-sm text-slate-400 hover:text-white transition"
+                onClick={handleAdminSearch}
+                disabled={searchLoading || !searchId.trim()}
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
               >
-                Effacer
+                <Search className="h-4 w-4" />
               </button>
-            )}
+              {showAdminSearch && (
+                <button
+                  onClick={() => {
+                    setShowAdminSearch(false);
+                    setSearchResults([]);
+                    setSearchId("");
+                  }}
+                  className="px-4 py-2 text-sm text-slate-400 hover:text-white transition"
+                >
+                  Effacer
+                </button>
+              )}
+            </div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showArchivedOnly}
+                onChange={(e) => setShowArchivedOnly(e.target.checked)}
+                className="w-4 h-4 rounded border-white/10 bg-slate-900/50 text-brand-500 focus:ring-brand-500 focus:ring-offset-0"
+              />
+              <span className="text-sm text-slate-300">Voir seulement les archivés</span>
+            </label>
           </div>
         </div>
       )}

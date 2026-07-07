@@ -298,8 +298,8 @@ def get_scrape_status():
 
 
 @app.get("/properties/all")
-def list_all_properties():
-    properties = get_all_properties()
+def list_all_properties(include_archived: bool = Query(default=False)):
+    properties = get_all_properties(include_archived=include_archived)
     return {"count": len(properties), "items": properties}
 
 
@@ -317,6 +317,8 @@ def search_properties(
     subcategory: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    include_archived: bool = Query(default=False),
+    archived_only: bool = Query(default=False),
 ):
     properties, total_count = get_properties(
         city=city,
@@ -331,6 +333,8 @@ def search_properties(
         subcategory=subcategory,
         limit=limit,
         offset=offset,
+        include_archived=include_archived,
+        archived_only=archived_only,
     )
     return {"count": total_count, "items": properties}
 

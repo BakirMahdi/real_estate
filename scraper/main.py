@@ -101,6 +101,16 @@ scrape_status_state = {
     "is_scraping": False,
     "results": None,
     "error": None,
+    "progress": {
+        "total_sources": 4,
+        "completed_sources": 0,
+        "sources": {
+            "scrape_tayara": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+            "scrape_mubawab": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+            "scrape_affare": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+            "scrape_expat": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+        },
+    },
 }
 
 async def weekly_scheduler():
@@ -180,6 +190,18 @@ def _run_scrape_task():
         scrape_status_state["is_scraping"] = True
         scrape_status_state["results"] = None
         scrape_status_state["error"] = None
+        
+        # Reset progress
+        scrape_status_state["progress"] = {
+            "total_sources": 4,
+            "completed_sources": 0,
+            "sources": {
+                "scrape_tayara": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+                "scrape_mubawab": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+                "scrape_affare": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+                "scrape_expat": {"status": "pending", "pages_processed": 0, "total_pages": 0, "items_found": 0},
+            },
+        }
 
         results = []
         source_samples = []
@@ -187,17 +209,38 @@ def _run_scrape_task():
         # Track all ad_ids found in this scrape for archiving later
         found_ad_ids = set()
 
-        # Run all scrapers in parallel
+        # Run scrapers sequentially (one at a time)
         scrapers = [scrape_tayara, scrape_mubawab, scrape_affare, scrape_expat]
         scraper_data = {}
-        with ThreadPoolExecutor(max_workers=len(scrapers)) as executor:
-            futures = {executor.submit(s): s for s in scrapers}
-            for future in futures:
-                scraper_fn = futures[future]
-                try:
-                    scraper_data[scraper_fn.__name__] = future.result()
-                except Exception as e:
-                    scraper_data[scraper_fn.__name__] = e
+        
+        def update_scraper_progress(scraper_name, status, pages_processed=0, total_pages=0, items_found=0):
+            """Update progress for a specific scraper."""
+            if scraper_name in scrape_status_state["progress"]["sources"]:
+                scrape_status_state["progress"]["sources"][scraper_name].update({
+                    "status": status,
+                    "pages_processed": pages_processed,
+                    "total_pages": total_pages,
+                    "items_found": items_found,
+                })
+        
+        def create_progress_callback(scraper_name):
+            """Create a progress callback for a specific scraper."""
+            def callback(pages_processed, total_pages, items_found):
+                update_scraper_progress(scraper_name, "running", pages_processed, total_pages, items_found)
+            return callback
+        
+        for scraper in scrapers:
+            scraper_name = scraper.__name__
+            update_scraper_progress(scraper_name, "running")
+            progress_callback = create_progress_callback(scraper_name)
+            try:
+                scraper_data[scraper_name] = scraper(progress_callback=progress_callback)
+                update_scraper_progress(scraper_name, "completed", items_found=len(scraper_data[scraper_name]))
+                scrape_status_state["progress"]["completed_sources"] += 1
+            except Exception as e:
+                scraper_data[scraper_name] = e
+                update_scraper_progress(scraper_name, "error")
+                scrape_status_state["progress"]["completed_sources"] += 1
 
         for scraper in scrapers:
             name = scraper.__name__

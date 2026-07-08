@@ -53,6 +53,16 @@ export function DashboardPage() {
     user_count: number;
     ads_by_source: Record<string, number>;
   } | null>(null);
+  const [scrapeProgress, setScrapeProgress] = useState<{
+    total_sources: number;
+    completed_sources: number;
+    sources: Record<string, {
+      status: string;
+      pages_processed: number;
+      total_pages: number;
+      items_found: number;
+    }>;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated()) {
@@ -74,6 +84,9 @@ export function DashboardPage() {
       setKpis(kpisData);
       if (scrapeStatus.next_scrape_time !== undefined) {
         setNextScrapeTime(scrapeStatus.next_scrape_time);
+      }
+      if (scrapeStatus.progress) {
+        setScrapeProgress(scrapeStatus.progress);
       }
 
       if (scrapeStatus.is_scraping) {
@@ -126,7 +139,12 @@ export function DashboardPage() {
             if (status.error) {
               setScrapeError(status.error);
             }
+            if (status.progress) {
+              setScrapeProgress(status.progress);
+            }
             refresh();
+          } else if (status.progress) {
+            setScrapeProgress(status.progress);
           }
         } catch (err) {
           if (err instanceof Error && err.message === "UNAUTHORIZED") {
@@ -428,6 +446,43 @@ export function DashboardPage() {
 
         {scrapeError && (
           <p className="mt-4 text-sm text-red-400">{scrapeError}</p>
+        )}
+
+        {scraping && scrapeProgress && (
+          <div className="mt-6 rounded-xl border border-white/5 bg-slate-900/60 p-4">
+            <h4 className="mb-3 text-sm font-semibold text-white">Progression du scrape</h4>
+            <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+              <span>Sources complétées</span>
+              <span>{scrapeProgress.completed_sources}/{scrapeProgress.total_sources}</span>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(scrapeProgress.sources).map(([source, progress]) => (
+                <div key={source} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2 w-2 rounded-full ${
+                      progress.status === 'completed' ? 'bg-emerald-400' :
+                      progress.status === 'running' ? 'bg-brand-400 animate-pulse' :
+                      progress.status === 'error' ? 'bg-red-400' :
+                      'bg-slate-500'
+                    }`} />
+                    <span className="text-xs text-slate-300">{source.replace('scrape_', '')}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-slate-400">
+                    <span>{progress.items_found} annonces</span>
+                    {progress.status === 'running' && (
+                      <span className="text-brand-400">En cours...</span>
+                    )}
+                    {progress.status === 'completed' && (
+                      <span className="text-emerald-400">Terminé</span>
+                    )}
+                    {progress.status === 'error' && (
+                      <span className="text-red-400">Erreur</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         )}
 
         {scrapeResults && (

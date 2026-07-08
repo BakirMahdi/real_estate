@@ -11,7 +11,7 @@ def clean_text(s):
 
 SOURCE = "affare"
 BASE_URL = "https://www.affare.tn/petites-annonces/tunisie/immobilier?o="
-MAX_PAGES = 100  # Increased to get all pages
+MAX_PAGES = 10000  # Scrape all pages (very high limit)
 DETAIL_WORKERS = 5
 
 _HEADERS = {
@@ -302,14 +302,21 @@ def fetch_page_links(page: int) -> list:
         return []
 
 
-def scrape_affare(max_pages: int = MAX_PAGES) -> list:
+def scrape_affare(max_pages: int = MAX_PAGES, progress_callback=None) -> list:
     """Scrape Affare Tunisia real estate listings across multiple pages."""
     all_links: set = set()
+    pages_completed = 0
+    total_pages = max_pages
 
     with ThreadPoolExecutor(max_workers=max_pages) as executor:
         futures = [executor.submit(fetch_page_links, p) for p in range(1, max_pages + 1)]
         for future in as_completed(futures):
             all_links.update(future.result())
+            pages_completed += 1
+            
+            # Update progress callback
+            if progress_callback:
+                progress_callback(pages_completed, total_pages, len(all_links))
 
     print(f"DEBUG: Total unique Affare links to scrape: {len(all_links)}")
     listings = []

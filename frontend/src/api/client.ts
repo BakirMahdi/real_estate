@@ -49,18 +49,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-  if (response.status === 401) {
-    throw new Error("UNAUTHORIZED");
+  try {
+    const response = await fetch(`${API_BASE}${path}`, { 
+      ...init, 
+      headers,
+      signal: controller.signal 
+    });
+    clearTimeout(timeoutId);
+
+    if (response.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(detail || `Request failed (${response.status})`);
+    }
+
+    return response.json() as Promise<T>;
+  } catch (error) {
+    clearTimeout(timeoutId);
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error("Request timeout - server may be busy");
+    }
+    throw error;
   }
-
-  if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(detail || `Request failed (${response.status})`);
-  }
-
-  return response.json() as Promise<T>;
 }
 
 function buildQuery(params: Record<string, string | number | undefined>): string {
@@ -80,7 +96,22 @@ export const api = {
   health: () => request<HealthStatus>("/health"),
   healthDb: () => request<HealthStatus>("/health/db"),
   scrape: () => request<{ status: string }>("/scrape", { method: "POST" }),
-  getScrapeStatus: () => request<{ is_scraping: boolean; results: ScrapeResult[] | null; error: string | null; next_scrape_time: number | null }>("/scrape/status"),
+  getScrapeStatus: () => request<{ 
+    is_scraping: boolean; 
+    results: ScrapeResult[] | null; 
+    error: string | null; 
+    next_scrape_time: number | null;
+    progress?: {
+      total_sources: number;
+      completed_sources: number;
+      sources: Record<string, {
+        status: string;
+        pages_processed: number;
+        total_pages: number;
+        items_found: number;
+      }>;
+    };
+  }>("/scrape/status"),
   getAllProperties: (includeArchived: boolean = false) => 
     request<PropertyListResponse>(`/properties/all?include_archived=${includeArchived}`),
   searchProperties: (filters: SearchFilters, includeArchived: boolean = false, archivedOnly: boolean = false) => {

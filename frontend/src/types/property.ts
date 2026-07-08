@@ -18,6 +18,7 @@ export interface Property {
   pool?: boolean | null;
   subcategory?: string | null;
   images?: string[] | null;
+  archived?: boolean;
 }
 
 export interface PropertyListResponse {
@@ -31,6 +32,7 @@ export interface ScrapeResult {
   inserted?: number;
   skipped?: number;
   errors?: number;
+  archived?: number;
   error?: string;
   message?: string | null;
 }

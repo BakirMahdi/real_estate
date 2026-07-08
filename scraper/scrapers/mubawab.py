@@ -8,7 +8,7 @@ from requests import RequestException
 
 BASE_URL = "https://www.mubawab.tn"
 SOURCE = "mubawab"
-MAX_PAGES = 1
+MAX_PAGES = 10000  # Scrape all pages (very high limit)
 DETAIL_WORKERS = 8
 
 LISTING_CATEGORIES = (
@@ -350,11 +350,14 @@ def _fetch_page(listing_type, base_url, page_number):
         return page_number, []
 
 
-def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES):
+def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES, progress_callback=None):
     results = []
 
     # Fetch all listing pages concurrently
     all_cards_by_page = {}
+    pages_completed = 0
+    total_pages = max_pages
+    
     with ThreadPoolExecutor(max_workers=max_pages) as executor:
         futures = {
             executor.submit(_fetch_page, listing_type, base_url, p): p
@@ -363,6 +366,12 @@ def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES):
         for future in as_completed(futures):
             page_number, cards = future.result()
             all_cards_by_page[page_number] = cards
+            pages_completed += 1
+            
+            # Update progress callback
+            if progress_callback:
+                items_found = sum(len(c) for c in all_cards_by_page.values())
+                progress_callback(pages_completed, total_pages, items_found)
 
     # Collect candidates in page order
     candidates = []
@@ -390,7 +399,7 @@ def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES):
     return results
 
 
-def scrape_mubawab(max_pages=MAX_PAGES):
+def scrape_mubawab(max_pages=MAX_PAGES, progress_callback=None):
     results = []
     seen_ad_ids = set()
 
@@ -400,6 +409,7 @@ def scrape_mubawab(max_pages=MAX_PAGES):
             base_url,
             seen_ad_ids,
             max_pages=max_pages,
+            progress_callback=progress_callback,
         )
         results.extend(category_results)
         print(f"DEBUG: Extracted {len(category_results)} new {listing_type} listings from Mubawab.")

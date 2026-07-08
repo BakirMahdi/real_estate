@@ -8,8 +8,12 @@ import {
   Loader2,
   Server,
   XCircle,
+  Lock,
+  Users,
+  Archive,
+  Globe,
 } from "lucide-react";
-import { api } from "../api/client";
+import { api, isAuthenticated, logout } from "../api/client";
 import { sourceLabel } from "../lib/format";
 import type { HealthStatus, ScrapeResult } from "../types/property";
 
@@ -39,21 +43,50 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [nextScrapeTime, setNextScrapeTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
+  const [needsAuth, setNeedsAuth] = useState(!isAuthenticated());
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [kpis, setKpis] = useState<{
+    properties_by_type: Record<string, number>;
+    archived_count: number;
+    user_count: number;
+    ads_by_source: Record<string, number>;
+  } | null>(null);
+  const [scrapeProgress, setScrapeProgress] = useState<{
+    total_sources: number;
+    completed_sources: number;
+    sources: Record<string, {
+      status: string;
+      pages_processed: number;
+      total_pages: number;
+      items_found: number;
+    }>;
+  } | null>(null);
 
   const refresh = useCallback(async () => {
+    if (!isAuthenticated()) {
+      setNeedsAuth(true);
+      return;
+    }
     setLoading(true);
     try {
-      const [health, dbStatus, props, scrapeStatus] = await Promise.all([
+      const [health, dbStatus, props, scrapeStatus, kpisData] = await Promise.all([
         api.health(),
         api.healthDb(),
         api.getAllProperties(),
         api.getScrapeStatus(),
+        api.getKpis(),
       ]);
       setApiHealth(health);
       setDbHealth(dbStatus);
       setTotalProperties(props.count);
+      setKpis(kpisData);
       if (scrapeStatus.next_scrape_time !== undefined) {
         setNextScrapeTime(scrapeStatus.next_scrape_time);
+      }
+      if (scrapeStatus.progress) {
+        setScrapeProgress(scrapeStatus.progress);
       }
 
       if (scrapeStatus.is_scraping) {
@@ -61,9 +94,14 @@ export function DashboardPage() {
       } else if (scrapeStatus.results && !scrapeResults) {
         setScrapeResults(scrapeStatus.results);
       }
-    } catch {
-      setApiHealth(null);
-      setDbHealth(null);
+    } catch (err) {
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+        logout();
+      } else {
+        setApiHealth(null);
+        setDbHealth(null);
+      }
     } finally {
       setLoading(false);
     }
@@ -101,9 +139,18 @@ export function DashboardPage() {
             if (status.error) {
               setScrapeError(status.error);
             }
+            if (status.progress) {
+              setScrapeProgress(status.progress);
+            }
             refresh();
+          } else if (status.progress) {
+            setScrapeProgress(status.progress);
           }
         } catch (err) {
+          if (err instanceof Error && err.message === "UNAUTHORIZED") {
+            setNeedsAuth(true);
+            logout();
+          }
           console.error("Error polling scrape status:", err);
         }
       }, 2000);
@@ -154,12 +201,79 @@ export function DashboardPage() {
       await api.scrape();
       setScraping(true);
     } catch (err) {
-      setScrapeError(err instanceof Error ? err.message : "Échec du démarrage du scrape");
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+        logout();
+      } else {
+        setScrapeError(err instanceof Error ? err.message : "Échec du démarrage du scrape");
+      }
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordInput) return;
+    
+    setAuthError(null);
+    setIsAuthenticating(true);
+    
+    try {
+      const response = await api.login("admin", passwordInput);
+      // Store the token
+      const token = response.access_token;
+      localStorage.setItem("auth_token", token);
+      localStorage.setItem("user_role", response.role);
+      setNeedsAuth(false);
+      refresh();
+    } catch (err) {
+      setAuthError("Mot de passe incorrect. Veuillez réessayer.");
+    } finally {
+      setIsAuthenticating(false);
     }
   };
 
   const apiOk = apiHealth?.status === "ok";
   const dbOk = dbHealth?.status === "ok";
+
+  if (needsAuth) {
+    return (
+      <div className="mx-auto max-w-md px-4 py-16 sm:px-6">
+        <div className="glass rounded-2xl p-8 shadow-card text-center animate-fade-in">
+          <div className="mb-4 mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/20">
+            <Lock className="h-6 w-6 text-brand-400" />
+          </div>
+          <h2 className="mb-2 font-display text-2xl font-semibold text-white">Authentification requise</h2>
+          <p className="mb-6 text-sm text-slate-400">
+            Veuillez vous connecter pour accéder au dashboard.
+          </p>
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <input
+              type="password"
+              placeholder="Mot de passe"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              className={`w-full rounded-xl border bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:ring-1 ${authError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-white/10 focus:border-brand-500 focus:ring-brand-500"}`}
+              autoFocus
+              disabled={isAuthenticating}
+            />
+            {authError && (
+              <p className="text-left text-sm text-red-400">{authError}</p>
+            )}
+            <button type="submit" disabled={isAuthenticating || !passwordInput} className="btn-primary w-full justify-center disabled:opacity-50">
+              {isAuthenticating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Vérification…
+                </>
+              ) : (
+                "Se connecter"
+              )}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
@@ -218,7 +332,73 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "150ms" }}>
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "150ms" }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600/20">
+            <Archive className="h-5 w-5 text-emerald-400" />
+          </div>
+          <p className="text-xs text-slate-500">Annonces archivées</p>
+          <p className="mt-2 font-display text-3xl font-semibold text-white">
+            {loading ? "—" : kpis?.archived_count ?? 0}
+          </p>
+        </div>
+
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "200ms" }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/20">
+            <Users className="h-5 w-5 text-blue-400" />
+          </div>
+          <p className="text-xs text-slate-500">Utilisateurs inscrits</p>
+          <p className="mt-2 font-display text-3xl font-semibold text-white">
+            {loading ? "—" : kpis?.user_count ?? 0}
+          </p>
+        </div>
+
+        <div className="stat-card animate-slide-up" style={{ animationDelay: "250ms" }}>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-600/20">
+            <Globe className="h-5 w-5 text-cyan-400" />
+          </div>
+          <p className="text-xs text-slate-500">Sources actives</p>
+          <p className="mt-2 font-display text-3xl font-semibold text-white">
+            {loading ? "—" : Object.keys(kpis?.ads_by_source ?? {}).length}
+          </p>
+        </div>
+      </div>
+
+      {kpis && !loading && (
+        <div className="mb-8 grid gap-4 sm:grid-cols-2">
+          <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "350ms" }}>
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">Propriétés par type</h3>
+            <div className="space-y-3">
+              {Object.entries(kpis.properties_by_type).map(([type, count]) => (
+                <div key={type} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">{type}</span>
+                  <span className="font-display text-lg font-semibold text-white">{count}</span>
+                </div>
+              ))}
+              {Object.keys(kpis.properties_by_type).length === 0 && (
+                <p className="text-sm text-slate-500">Aucune donnée disponible</p>
+              )}
+            </div>
+          </div>
+
+          <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "400ms" }}>
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">Annonces par source</h3>
+            <div className="space-y-3">
+              {Object.entries(kpis.ads_by_source).map(([source, count]) => (
+                <div key={source} className="flex items-center justify-between">
+                  <span className="text-sm text-slate-300">{sourceLabel(source)}</span>
+                  <span className="font-display text-lg font-semibold text-white">{count}</span>
+                </div>
+              ))}
+              {Object.keys(kpis.ads_by_source).length === 0 && (
+                <p className="text-sm text-slate-500">Aucune donnée disponible</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "450ms" }}>
         <h2 className="mb-2 font-display text-xl font-semibold text-white">
           Lancer un scrape
         </h2>
@@ -234,7 +414,7 @@ export function DashboardPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-slate-300">Scrape automatique</p>
-              <p className="text-xs text-slate-500">Chaque début d'heure (ex: 00h00, 01h00…)</p>
+              <p className="text-xs text-slate-500">Chaque lundi à 00h00</p>
             </div>
           </div>
           <div className="flex flex-col sm:items-end">
@@ -268,6 +448,43 @@ export function DashboardPage() {
           <p className="mt-4 text-sm text-red-400">{scrapeError}</p>
         )}
 
+        {scraping && scrapeProgress && (
+          <div className="mt-6 rounded-xl border border-white/5 bg-slate-900/60 p-4">
+            <h4 className="mb-3 text-sm font-semibold text-white">Progression du scrape</h4>
+            <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+              <span>Sources complétées</span>
+              <span>{scrapeProgress.completed_sources}/{scrapeProgress.total_sources}</span>
+            </div>
+            <div className="space-y-2">
+              {Object.entries(scrapeProgress.sources).map(([source, progress]) => (
+                <div key={source} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className={`h-2 w-2 rounded-full ${
+                      progress.status === 'completed' ? 'bg-emerald-400' :
+                      progress.status === 'running' ? 'bg-brand-400 animate-pulse' :
+                      progress.status === 'error' ? 'bg-red-400' :
+                      'bg-slate-500'
+                    }`} />
+                    <span className="text-xs text-slate-300">{source.replace('scrape_', '')}</span>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-slate-400">
+                    <span>{progress.items_found} annonces</span>
+                    {progress.status === 'running' && (
+                      <span className="text-brand-400">En cours...</span>
+                    )}
+                    {progress.status === 'completed' && (
+                      <span className="text-emerald-400">Terminé</span>
+                    )}
+                    {progress.status === 'error' && (
+                      <span className="text-red-400">Erreur</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {scrapeResults && (
           <div className="mt-6 overflow-hidden rounded-xl border border-white/5">
             {scrapeDuration > 0 && (
@@ -283,6 +500,7 @@ export function DashboardPage() {
                   <th className="px-4 py-3 font-medium">Insérées</th>
                   <th className="px-4 py-3 font-medium">Déjà en base</th>
                   <th className="px-4 py-3 font-medium">Erreurs</th>
+                  <th className="px-4 py-3 font-medium">Archivées</th>
                 </tr>
               </thead>
               <tbody>
@@ -294,7 +512,7 @@ export function DashboardPage() {
                         {sourceLabel(sourceKey)}
                       </td>
                       {result.error ? (
-                        <td colSpan={4} className="px-4 py-3 text-red-400">
+                        <td colSpan={5} className="px-4 py-3 text-red-400">
                           {result.error}
                         </td>
                       ) : (
@@ -303,6 +521,7 @@ export function DashboardPage() {
                           <td className="px-4 py-3 text-emerald-400">{result.inserted}</td>
                           <td className="px-4 py-3 text-slate-400">{result.skipped}</td>
                           <td className="px-4 py-3 text-amber-400">{result.errors}</td>
+                          <td className="px-4 py-3 text-violet-400">{result.archived || 0}</td>
                         </>
                       )}
                     </tr>

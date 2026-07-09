@@ -17,7 +17,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
         </Routes>
       </main>
-      <footer className="border-t border-white/5 py-6 text-center text-xs text-slate-600">
+      <footer className="border-t border-slate-100 py-6 text-center text-xs text-slate-400">
         Rews — Agrégateur immobilier Tunisie
       </footer>
     </div>

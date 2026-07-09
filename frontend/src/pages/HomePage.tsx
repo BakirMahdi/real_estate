@@ -107,10 +107,10 @@ export function HomePage() {
           <Home className="h-4 w-4" />
           Catalogue
         </div>
-        <h1 className="font-display text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+        <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
           Trouvez votre bien
         </h1>
-        <p className="mt-3 max-w-2xl text-slate-400">
+        <p className="mt-3 max-w-2xl text-slate-500">
           Annonces immobilières agrégées depuis Tayara, Mubawab et Expat —
           maisons, appartements et terrains à travers la Tunisie.
         </p>
@@ -126,8 +126,8 @@ export function HomePage() {
       </div>
 
       <div className="mb-6 flex items-center justify-between">
-        <p className="text-sm text-slate-400">
-          <span className="font-medium text-white">{total}</span> annonce
+        <p className="text-sm text-slate-500">
+          <span className="font-medium text-slate-900">{total}</span> annonce
           {total !== 1 ? "s" : ""} trouvée{total !== 1 ? "s" : ""}
         </p>
       </div>
@@ -136,7 +136,7 @@ export function HomePage() {
         <LoadingSpinner label="Chargement des annonces..." />
       ) : error ? (
         <div className="glass rounded-2xl p-8 text-center">
-          <p className="text-red-400">{error}</p>
+          <p className="text-red-600">{error}</p>
           <button
             type="button"
             onClick={() => loadProperties(filters)}
@@ -147,25 +147,36 @@ export function HomePage() {
         </div>
       ) : properties.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center">
-          <p className="text-slate-400">Aucune annonce ne correspond à vos filtres.</p>
+          <p className="text-slate-500">
+            Aucune annonce ne correspond à vos filtres.
+          </p>
         </div>
       ) : (
         <>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {properties.map((property, index) => (
-              <PropertyCard key={property.id} property={property} index={index} />
+              <PropertyCard
+                key={property.id}
+                property={property}
+                index={index}
+              />
             ))}
           </div>
 
           {/* Pagination system */}
           {totalPages > 1 && (
-            <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-white/5 pt-6 sm:flex-row animate-fade-in">
-              <p className="text-sm text-slate-400">
-                Affichage de <span className="font-medium text-white">{Math.min((filters.offset ?? 0) + 1, total)}</span> à{" "}
-                <span className="font-medium text-white">
+            <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-100 pt-6 sm:flex-row animate-fade-in">
+              <p className="text-sm text-slate-500">
+                Affichage de{" "}
+                <span className="font-medium text-slate-900">
+                  {Math.min((filters.offset ?? 0) + 1, total)}
+                </span>{" "}
+                à{" "}
+                <span className="font-medium text-slate-900">
                   {Math.min((filters.offset ?? 0) + properties.length, total)}
                 </span>{" "}
-                sur <span className="font-medium text-white">{total}</span> annonces
+                sur <span className="font-medium text-slate-900">{total}</span>{" "}
+                annonces
               </p>
 
               <div className="flex items-center gap-1">
@@ -173,7 +184,7 @@ export function HomePage() {
                   type="button"
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1 || loading}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-slate-900/40 text-slate-400 transition hover:bg-slate-800 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
                   aria-label="Page précédente"
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -184,7 +195,7 @@ export function HomePage() {
                     return (
                       <span
                         key={`ell-${idx}`}
-                        className="flex h-9 w-9 items-center justify-center text-sm text-slate-500"
+                        className="flex h-9 w-9 items-center justify-center text-sm text-slate-400"
                       >
                         {p}
                       </span>
@@ -200,8 +211,8 @@ export function HomePage() {
                       disabled={loading}
                       className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition ${
                         isActive
-                          ? "bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-lg shadow-brand-600/20"
-                          : "border border-white/10 bg-slate-900/40 text-slate-400 hover:bg-slate-800 hover:text-white"
+                          ? "bg-brand-600 text-white shadow-md"
+                          : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                     >
                       {p}
@@ -213,7 +224,7 @@ export function HomePage() {
                   type="button"
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages || loading}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-slate-900/40 text-slate-400 transition hover:bg-slate-800 hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
                   aria-label="Page suivante"
                 >
                   <ChevronRight className="h-4 w-4" />

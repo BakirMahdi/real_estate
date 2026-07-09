@@ -682,29 +682,29 @@ def admin_search(search_id: str, include_archived: bool = False, request: Reques
 
 @app.get("/admin/archive-search")
 def admin_archive_search(
-    ad_id: str | None = Query(default=None),
-    name: str | None = Query(default=None),
-    location: str | None = Query(default=None),
-    min_price: float | None = Query(default=None),
-    max_price: float | None = Query(default=None),
-    source: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    archived_only: bool = Query(default=False),
+    offset: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=200),
+    sort_by: str = Query(default="id"),
+    sort_dir: str = Query(default="desc"),
     request: Request = None,
 ):
-    """Filtered search for the archiving section (ID, name, location, price,
-    source). Returns archived and non-archived ads. Admin only."""
+    """Server-side paginated search for the archiving section's DataTable.
+    Returns one page of results plus counts for DataTables' pagination.
+    Admin only."""
     role = get_current_user_role(request)
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
 
-    properties = search_properties_admin(
-        ad_id=ad_id,
-        name=name,
-        location=location,
-        min_price=min_price,
-        max_price=max_price,
-        source=source,
+    return search_properties_admin(
+        search=search,
+        archived_only=archived_only,
+        offset=offset,
+        limit=limit,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
-    return {"count": len(properties), "items": properties}
 
 
 @app.post("/admin/{property_id}/archive")

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft,
   ArrowUpRight,
@@ -39,13 +39,13 @@ function DetailItem({
   value: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-white/5 bg-slate-900/40 p-4">
+    <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-4">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600/20">
         <Icon className="h-4 w-4 text-brand-400" />
       </div>
       <div>
-        <p className="text-xs text-slate-500">{label}</p>
-        <p className="mt-0.5 font-medium text-white">{value}</p>
+        <p className="text-xs text-slate-400">{label}</p>
+        <p className="mt-0.5 font-medium text-slate-900">{value}</p>
       </div>
     </div>
   );
@@ -53,6 +53,7 @@ function DetailItem({
 
 export function PropertyPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [property, setProperty] = useState<Property | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,16 +75,29 @@ export function PropertyPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const goBack = () => {
+    // Prefer real browser back navigation so the previous page (search
+    // results, dashboard, etc.) is restored exactly as it was, instead of
+    // always landing on the homepage. Falls back to "/" when this page was
+    // opened directly (no in-app history to go back to).
+    const historyIndex = (window.history.state as { idx?: number } | null)?.idx;
+    if (typeof historyIndex === "number" && historyIndex > 0) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  };
+
   if (loading) return <LoadingSpinner label="Chargement de l'annonce..." />;
 
   if (error || !property) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
-        <p className="text-red-400">{error ?? "Annonce introuvable"}</p>
-        <Link to="/" className="btn-primary mt-6 inline-flex">
+        <p className="text-red-600">{error ?? "Annonce introuvable"}</p>
+        <button type="button" onClick={goBack} className="btn-primary mt-6 inline-flex">
           <ArrowLeft className="h-4 w-4" />
-          Retour aux annonces
-        </Link>
+          Retour
+        </button>
       </div>
     );
   }
@@ -104,28 +118,29 @@ export function PropertyPage() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
-      <Link
-        to="/"
-        className="mb-6 inline-flex items-center gap-2 text-sm text-slate-400 transition hover:text-white"
+      <button
+        type="button"
+        onClick={goBack}
+        className="mb-6 inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-900"
       >
         <ArrowLeft className="h-4 w-4" />
-        Retour aux annonces
-      </Link>
+        Retour
+      </button>
 
-      <div className="animate-fade-in overflow-hidden rounded-3xl border border-white/10 bg-slate-900/40 shadow-card">
+      <div className="animate-fade-in overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-card">
         {/* Gallery Section */}
-        <div className="relative border-b border-white/5 bg-slate-950">
+        <div className="relative border-b border-slate-100 bg-slate-100">
           <div className="relative h-64 overflow-hidden sm:h-96 md:h-[450px]">
             {images.length > 0 ? (
               <img
                 src={images[activeImageIndex]}
                 alt={`${property.title} - Image ${activeImageIndex + 1}`}
-                className="h-full w-full object-contain bg-slate-950 transition duration-300"
+                className="h-full w-full object-contain bg-slate-100 transition duration-300"
               />
             ) : (
               <div className={`absolute inset-0 bg-gradient-to-br ${gradient} flex items-center justify-center`}>
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMTBoMTBNMTAgMHYxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PC9zdmc+')] opacity-50" />
-                <span className="text-sm font-medium text-slate-400">Aucune image disponible</span>
+                <span className="text-sm font-medium text-slate-500">Aucune image disponible</span>
               </div>
             )}
 
@@ -135,7 +150,7 @@ export function PropertyPage() {
                 <button
                   type="button"
                   onClick={prevImage}
-                  className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-slate-950/70 border border-white/10 text-white backdrop-blur transition hover:bg-slate-950"
+                  className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 border border-slate-200 text-slate-900 backdrop-blur transition hover:bg-white"
                   aria-label="Image précédente"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -143,7 +158,7 @@ export function PropertyPage() {
                 <button
                   type="button"
                   onClick={nextImage}
-                  className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-slate-950/70 border border-white/10 text-white backdrop-blur transition hover:bg-slate-950"
+                  className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 border border-slate-200 text-slate-900 backdrop-blur transition hover:bg-white"
                   aria-label="Image suivante"
                 >
                   <ChevronRight className="h-5 w-5" />
@@ -153,7 +168,7 @@ export function PropertyPage() {
 
             {/* Image Counter Badge */}
             {images.length > 0 && (
-              <div className="absolute bottom-4 right-4 rounded-lg bg-slate-950/75 px-2.5 py-1 text-xs font-medium text-slate-300 backdrop-blur">
+              <div className="absolute bottom-4 right-4 rounded-lg bg-white/85 px-2.5 py-1 text-xs font-medium text-slate-700 backdrop-blur">
                 {activeImageIndex + 1} / {images.length}
               </div>
             )}
@@ -161,7 +176,7 @@ export function PropertyPage() {
 
           {/* Thumbnails Row */}
           {hasMultipleImages && (
-            <div className="flex gap-2 overflow-x-auto p-4 bg-slate-900/60 scrollbar-none">
+            <div className="flex gap-2 overflow-x-auto p-4 bg-slate-50 scrollbar-none">
               {images.map((img, idx) => (
                 <button
                   key={`${idx}-${img}`}
@@ -187,20 +202,20 @@ export function PropertyPage() {
         {/* Content Section */}
         <div className="p-6 sm:p-8">
           {/* Title and Price */}
-          <div className="mb-6 border-b border-white/5 pb-6">
+          <div className="mb-6 border-b border-slate-100 pb-6">
             <div className="mb-3 flex flex-wrap gap-2">
-              <span className="rounded-lg bg-brand-500/15 px-3 py-1 text-xs font-semibold text-brand-300">
+              <span className="rounded-lg bg-brand-500/15 px-3 py-1 text-xs font-semibold text-slate-900">
                 {sourceLabel(property.source)}
               </span>
-              <span className="rounded-lg bg-slate-800 px-3 py-1 text-xs font-semibold text-slate-300">
+              <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 {subcategoryLabel(property.subcategory, property.property_type)}
               </span>
-              <span className="rounded-lg bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-300">
+              <span className="rounded-lg bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-700">
                 {listingTypeLabel(property.listing_type)}
               </span>
             </div>
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <h1 className="font-display text-2xl font-bold leading-tight text-white sm:text-3xl">
+              <h1 className="font-display text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                 {property.title}
               </h1>
               <p className="shrink-0 font-display text-2xl font-extrabold text-brand-400 sm:text-3xl">
@@ -259,18 +274,18 @@ export function PropertyPage() {
 
           {/* Description */}
           {property.description && (
-            <div className="mb-8 border-t border-white/5 pt-6">
-              <h2 className="mb-3 font-display text-xl font-semibold text-white">
+            <div className="mb-8 border-t border-slate-100 pt-6">
+              <h2 className="mb-3 font-display text-xl font-semibold text-slate-900">
                 Description
               </h2>
-              <p className="whitespace-pre-wrap leading-relaxed text-slate-400">
+              <p className="whitespace-pre-wrap leading-relaxed text-slate-500">
                 {property.description}
               </p>
             </div>
           )}
 
           {/* External Action */}
-          <div className="flex flex-wrap gap-3 border-t border-white/5 pt-6">
+          <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-6">
             <a
               href={property.url}
               target="_blank"

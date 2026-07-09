@@ -244,76 +244,90 @@ def search_properties_by_id(search_id, include_archived=False):
     return properties
 
 
-def search_properties_admin(
-    ad_id=None,
-    name=None,
-    location=None,
-    min_price=None,
-    max_price=None,
-    source=None,
-    limit=200,
-):
-    """Filtered search for the admin archiving section.
+_ADMIN_SORT_COLUMNS = {
+    "id": "id",
+    "title": "title",
+    "location": "COALESCE(governorate, city, address)",
+    "price": "price",
+    "source": "source",
+}
 
-    Every provided filter is combined with AND:
-      - ad_id: exact match on the numeric id or the source ad_id
-      - name: substring match on the title
-      - location: substring match on the city or address
-      - min_price / max_price: price range
-      - source: exact source website
-    Archived and non-archived ads are both returned so the admin can toggle
-    either way.
+
+def search_properties_admin(
+    search=None,
+    archived_only=False,
+    offset=0,
+    limit=25,
+    sort_by="id",
+    sort_dir="desc",
+):
+    """Server-side paginated search for the admin archiving DataTable.
+
+    `search` matches (as a single free-text term) against id, ad_id, title,
+    city, address, governorate and source. `archived_only` restricts to
+    archived rows; otherwise both archived and non-archived rows are
+    included. Sorting and pagination happen in SQL so only one page of rows
+    ever reaches the browser, regardless of how large the properties table
+    gets.
+
+    Returns a dict with:
+      - total: row count for the current archived_only scope (unfiltered by
+        the search term) — DataTables' "recordsTotal"
+      - total_filtered: row count after also applying the search term —
+        DataTables' "recordsFiltered", used to compute the page count
+      - items: the current page of properties
     """
     conn = get_conn()
     cur = conn.cursor()
 
-    conditions = []
-    params = []
+    sort_col = _ADMIN_SORT_COLUMNS.get(sort_by, "id")
+    sort_dir = "ASC" if str(sort_dir).lower() == "asc" else "DESC"
 
-    if ad_id and str(ad_id).strip():
-        term = str(ad_id).strip()
-        sub = ["ad_id = %s"]
-        sub_params = [term]
+    base_conditions = []
+    if archived_only:
+        base_conditions.append("archived = TRUE")
+    base_where = " AND ".join(base_conditions) if base_conditions else "TRUE"
+
+    search_conditions = list(base_conditions)
+    search_params = []
+    if search and search.strip():
+        term = search.strip()
+        like = f"%{term}%"
+        sub = [
+            "title ILIKE %s",
+            "city ILIKE %s",
+            "address ILIKE %s",
+            "governorate ILIKE %s",
+            "source ILIKE %s",
+            "ad_id ILIKE %s",
+        ]
+        sub_params = [like, like, like, like, like, like]
         try:
-            sub.insert(0, "id = %s")
-            sub_params.insert(0, int(term))
+            id_val = int(term)
         except ValueError:
-            pass
-        conditions.append("(" + " OR ".join(sub) + ")")
-        params.extend(sub_params)
+            id_val = None
+        if id_val is not None:
+            sub.insert(0, "id = %s")
+            sub_params.insert(0, id_val)
+        search_conditions.append("(" + " OR ".join(sub) + ")")
+        search_params.extend(sub_params)
+    search_where = " AND ".join(search_conditions) if search_conditions else "TRUE"
 
-    if name and name.strip():
-        conditions.append("title ILIKE %s")
-        params.append(f"%{name.strip()}%")
+    cur.execute(f"SELECT count(*) FROM properties WHERE {base_where}")
+    total = cur.fetchone()[0]
 
-    if location and location.strip():
-        conditions.append("(city ILIKE %s OR address ILIKE %s)")
-        loc = f"%{location.strip()}%"
-        params.extend([loc, loc])
-
-    if min_price is not None:
-        conditions.append("price >= %s")
-        params.append(min_price)
-
-    if max_price is not None:
-        conditions.append("price <= %s")
-        params.append(max_price)
-
-    if source and source.strip():
-        conditions.append("source = %s")
-        params.append(source.strip())
-
-    where = " AND ".join(conditions) if conditions else "TRUE"
+    cur.execute(f"SELECT count(*) FROM properties WHERE {search_where}", search_params)
+    total_filtered = cur.fetchone()[0]
 
     cur.execute(
         f"""
         SELECT {_PROPERTY_COLUMNS}
         FROM properties
-        WHERE {where}
-        ORDER BY id DESC
-        LIMIT %s
+        WHERE {search_where}
+        ORDER BY {sort_col} {sort_dir} NULLS LAST, id DESC
+        LIMIT %s OFFSET %s
         """,
-        (*params, limit),
+        (*search_params, limit, offset),
     )
 
     rows = cur.fetchall()
@@ -321,7 +335,7 @@ def search_properties_admin(
 
     cur.close()
     conn.close()
-    return properties
+    return {"total": total, "total_filtered": total_filtered, "items": properties}
 
 
 def archive_property(property_id):

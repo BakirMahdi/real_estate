@@ -1,5 +1,5 @@
 import type {
-  ArchiveSearchFilters,
+  ArchiveSearchParams,
   HealthStatus,
   Property,
   PropertyListResponse,
@@ -132,9 +132,18 @@ export const api = {
     }),
   adminSearch: (searchId: string, includeArchived: boolean = false) =>
     request<{ count: number; items: Property[] }>(`/admin/search?search_id=${searchId}&include_archived=${includeArchived}`),
-  adminArchiveSearch: (filters: ArchiveSearchFilters) => {
-    const query = buildQuery({ ...filters } as Record<string, string | number | undefined>);
-    return request<{ count: number; items: Property[] }>(`/admin/archive-search${query}`);
+  adminArchiveSearch: (params: ArchiveSearchParams) => {
+    const query = buildQuery({
+      search: params.search,
+      archived_only: params.archivedOnly ? "true" : undefined,
+      offset: params.offset,
+      limit: params.limit,
+      sort_by: params.sortBy,
+      sort_dir: params.sortDir,
+    });
+    return request<{ total: number; total_filtered: number; items: Property[] }>(
+      `/admin/archive-search${query}`,
+    );
   },
   adminArchive: (propertyId: number) =>
     request<{ message: string }>(`/admin/${propertyId}/archive`, {

@@ -3,12 +3,12 @@ import type { SearchFilters } from "../types/property";
 
 interface FilterBarProps {
   filters: SearchFilters;
-  cities: string[];
+  governorates: string[];
   onChange: (filters: SearchFilters) => void;
   onReset: () => void;
 }
 
-export function FilterBar({ filters, cities, onChange, onReset }: FilterBarProps) {
+export function FilterBar({ filters, governorates, onChange, onReset }: FilterBarProps) {
   const set = (key: keyof SearchFilters, value: any) => {
     onChange({
       ...filters,
@@ -56,16 +56,16 @@ export function FilterBar({ filters, cities, onChange, onReset }: FilterBarProps
       {/* Filters Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-400">Ville</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-400">Gouvernorat</label>
           <select
             className="input-field w-full"
             value={filters.city ?? ""}
             onChange={(e) => set("city", e.target.value)}
           >
-            <option value="">Toutes</option>
-            {cities.map((city) => (
-              <option key={city} value={city}>
-                {city}
+            <option value="">Tous</option>
+            {governorates.map((gov) => (
+              <option key={gov} value={gov}>
+                {gov}
               </option>
             ))}
           </select>

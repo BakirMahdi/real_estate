@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Home, Search } from "lucide-react";
-import { api, isAdmin } from "../api/client";
+import { ChevronLeft, ChevronRight, Home } from "lucide-react";
+import { api } from "../api/client";
+import { governorateOf, GOVERNORATE_NAMES } from "../lib/format";
 import { FilterBar } from "../components/FilterBar";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { PropertyCard } from "../components/PropertyCard";
 import type { Property, SearchFilters } from "../types/property";
 
-const PAGE_SIZE = 6;
+const PAGE_SIZE = 12;
 
 const defaultFilters: SearchFilters = {
   limit: PAGE_SIZE,
@@ -15,115 +16,51 @@ const defaultFilters: SearchFilters = {
 
 export function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
-  const [cities, setCities] = useState<string[]>([]);
+  const [governorates, setGovernorates] = useState<string[]>([]);
   const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [searchId, setSearchId] = useState("");
-  const [searchResults, setSearchResults] = useState<Property[]>([]);
-  const [searchLoading, setSearchLoading] = useState(false);
-  const [showAdminSearch, setShowAdminSearch] = useState(false);
-  const [showArchivedOnly, setShowArchivedOnly] = useState(false);
-  const userIsAdmin = isAdmin();
 
-  const loadCities = useCallback(async () => {
+  const loadGovernorates = useCallback(async () => {
     try {
       const data = await api.getAllProperties(true);
-      const unique = [
-        ...new Set(
-          data.items.map((p) => p.city).filter((c): c is string => Boolean(c)),
-        ),
-      ].sort();
-      setCities(unique);
+      const present = new Set(data.items.map((p) => governorateOf(p)));
+      // Only show real governorates in the dropdown — never leak the raw
+      // address of the few rows that can't be resolved.
+      const unique = GOVERNORATE_NAMES.filter((g) => present.has(g)).sort(
+        (a, b) => a.localeCompare(b, "fr"),
+      );
+      setGovernorates(unique);
     } catch {
-      /* cities are optional for filters */
+      /* governorates are optional for filters */
     }
   }, []);
 
-  const loadProperties = useCallback(
-    async (activeFilters: SearchFilters) => {
-      setLoading(true);
-      setError(null);
+  const loadProperties = useCallback(async (activeFilters: SearchFilters) => {
+    setLoading(true);
+    setError(null);
 
-      try {
-        const data = await api.searchProperties(activeFilters, userIsAdmin, showArchivedOnly);
-        setTotal(data.count);
-        setProperties(data.items);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Erreur de chargement");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [userIsAdmin, showArchivedOnly],
-  );
+    try {
+      const data = await api.searchProperties(activeFilters);
+      setTotal(data.count);
+      setProperties(data.items);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erreur de chargement");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    loadCities();
-  }, [loadCities]);
+    loadGovernorates();
+  }, [loadGovernorates]);
 
   useEffect(() => {
     loadProperties(filters);
   }, [filters, loadProperties]);
 
   const resetFilters = () => setFilters(defaultFilters);
-
-  const handleAdminSearch = async () => {
-    if (!searchId.trim()) return;
-    setSearchLoading(true);
-    setShowAdminSearch(false);
-    try {
-      const results = await api.adminSearch(searchId, true);
-      setSearchResults(results.items);
-      setShowAdminSearch(true);
-    } catch (err) {
-      console.error("Search error:", err);
-      setShowAdminSearch(false);
-    } finally {
-      setSearchLoading(false);
-    }
-  };
-
-  const handleArchive = async (propertyId: number) => {
-    try {
-      await api.adminArchive(propertyId);
-      if (showAdminSearch) {
-        handleAdminSearch();
-      } else {
-        // Update local state directly to avoid flicker
-        setProperties(prev => prev.map(p => 
-          p.id === propertyId ? { ...p, archived: true } : p
-        ));
-        // If showing only archived, reload to remove the now-archived item
-        if (showArchivedOnly) {
-          loadProperties(filters);
-        }
-      }
-    } catch (err) {
-      console.error("Archive error:", err);
-    }
-  };
-
-  const handleUnarchive = async (propertyId: number) => {
-    try {
-      await api.adminUnarchive(propertyId);
-      if (showAdminSearch) {
-        handleAdminSearch();
-      } else {
-        // Update local state directly to avoid flicker
-        setProperties(prev => prev.map(p => 
-          p.id === propertyId ? { ...p, archived: false } : p
-        ));
-        // If showing only archived, reload to remove the now-unarchived item
-        if (showArchivedOnly) {
-          loadProperties(filters);
-        }
-      }
-    } catch (err) {
-      console.error("Unarchive error:", err);
-    }
-  };
 
   const currentPage = Math.floor((filters.offset ?? 0) / PAGE_SIZE) + 1;
   const totalPages = Math.ceil(total / PAGE_SIZE);
@@ -174,82 +111,28 @@ export function HomePage() {
           Trouvez votre bien
         </h1>
         <p className="mt-3 max-w-2xl text-slate-400">
-          Annonces immobilières agrégées depuis Tayara et Mubawab — maisons,
-          appartements et terrains à travers la Tunisie.
+          Annonces immobilières agrégées depuis Tayara, Mubawab et Expat —
+          maisons, appartements et terrains à travers la Tunisie.
         </p>
       </section>
 
       <div className="mb-8">
         <FilterBar
           filters={filters}
-          cities={cities}
+          governorates={governorates}
           onChange={setFilters}
           onReset={resetFilters}
         />
       </div>
 
-      {userIsAdmin && (
-        <div className="mb-6 glass rounded-xl p-4">
-          <div className="flex flex-wrap gap-4 items-center">
-            <div className="flex gap-2 flex-1 min-w-[200px]">
-              <input
-                type="text"
-                placeholder="Rechercher par ID (admin only)..."
-                value={searchId}
-                onChange={(e) => setSearchId(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAdminSearch()}
-                className="flex-1 rounded-lg border bg-slate-900/50 px-4 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 border-white/10 focus:border-brand-500 focus:ring-brand-500"
-              />
-              <button
-                onClick={handleAdminSearch}
-                disabled={searchLoading || !searchId.trim()}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-50"
-              >
-                <Search className="h-4 w-4" />
-              </button>
-              {showAdminSearch && (
-                <button
-                  onClick={() => {
-                    setShowAdminSearch(false);
-                    setSearchResults([]);
-                    setSearchId("");
-                  }}
-                  className="px-4 py-2 text-sm text-slate-400 hover:text-white transition"
-                >
-                  Effacer
-                </button>
-              )}
-            </div>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={showArchivedOnly}
-                onChange={(e) => setShowArchivedOnly(e.target.checked)}
-                className="w-4 h-4 rounded border-white/10 bg-slate-900/50 text-brand-500 focus:ring-brand-500 focus:ring-offset-0"
-              />
-              <span className="text-sm text-slate-300">Voir seulement les archivés</span>
-            </label>
-          </div>
-        </div>
-      )}
-
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-slate-400">
-          {showAdminSearch ? (
-            <>
-              <span className="font-medium text-white">{searchResults.length}</span> résultat
-              {searchResults.length !== 1 ? "s" : ""} pour la recherche admin
-            </>
-          ) : (
-            <>
-              <span className="font-medium text-white">{total}</span> annonce
-              {total !== 1 ? "s" : ""} trouvée{total !== 1 ? "s" : ""}
-            </>
-          )}
+          <span className="font-medium text-white">{total}</span> annonce
+          {total !== 1 ? "s" : ""} trouvée{total !== 1 ? "s" : ""}
         </p>
       </div>
 
-      {loading || searchLoading ? (
+      {loading ? (
         <LoadingSpinner label="Chargement des annonces..." />
       ) : error ? (
         <div className="glass rounded-2xl p-8 text-center">
@@ -262,27 +145,6 @@ export function HomePage() {
             Réessayer
           </button>
         </div>
-      ) : showAdminSearch ? (
-        <>
-          {searchResults.length === 0 ? (
-            <div className="glass rounded-2xl p-12 text-center">
-              <p className="text-slate-400">Aucun résultat pour cette recherche.</p>
-            </div>
-          ) : (
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              {searchResults.map((property, index) => (
-                <PropertyCard 
-                  key={property.id} 
-                  property={property} 
-                  index={index} 
-                  isAdmin={userIsAdmin}
-                  onArchive={handleArchive}
-                  onUnarchive={handleUnarchive}
-                />
-              ))}
-            </div>
-          )}
-        </>
       ) : properties.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center">
           <p className="text-slate-400">Aucune annonce ne correspond à vos filtres.</p>
@@ -291,14 +153,7 @@ export function HomePage() {
         <>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {properties.map((property, index) => (
-              <PropertyCard 
-                key={property.id} 
-                property={property} 
-                index={index} 
-                isAdmin={userIsAdmin}
-                onArchive={handleArchive}
-                onUnarchive={handleUnarchive}
-              />
+              <PropertyCard key={property.id} property={property} index={index} />
             ))}
           </div>
 

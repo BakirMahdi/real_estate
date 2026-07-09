@@ -12,4 +12,6 @@ venv/
 logs/
 node_modules/
 frontend/dist/
+*.tsbuildinfo
 tayara_debug.html
+mubawab_debug.html

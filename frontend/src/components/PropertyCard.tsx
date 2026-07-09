@@ -1,9 +1,10 @@
 import { Link } from "react-router-dom";
-import { ArrowUpRight, BedDouble, MapPin, Maximize2, Archive, ArchiveRestore } from "lucide-react";
+import { ArrowUpRight, BedDouble, MapPin, Maximize2 } from "lucide-react";
 import type { Property } from "../types/property";
 import {
   formatArea,
   formatPrice,
+  governorateOf,
   listingTypeLabel,
   propertyGradient,
   sourceLabel,
@@ -14,26 +15,11 @@ import {
 interface PropertyCardProps {
   property: Property;
   index?: number;
-  isAdmin?: boolean;
-  onArchive?: (propertyId: number) => Promise<void>;
-  onUnarchive?: (propertyId: number) => Promise<void>;
 }
 
-export function PropertyCard({ property, index = 0, isAdmin = false, onArchive, onUnarchive }: PropertyCardProps) {
+export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
   const gradient = propertyGradient(property.id);
   const mainImage = property.images && property.images.length > 0 ? property.images[0] : null;
-
-  const handleArchiveClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onArchive) onArchive(property.id);
-  };
-
-  const handleUnarchiveClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onUnarchive) onUnarchive(property.id);
-  };
 
   return (
     <div className="group block animate-slide-up overflow-hidden rounded-2xl border border-white/10 bg-slate-900/40 shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
@@ -64,11 +50,6 @@ export function PropertyCard({ property, index = 0, isAdmin = false, onArchive, 
             <span className="rounded-lg bg-slate-950/70 px-2.5 py-1 text-xs font-medium text-amber-300 backdrop-blur">
               {listingTypeLabel(property.listing_type)}
             </span>
-            {property.archived && (
-              <span className="rounded-lg bg-red-600/70 px-2.5 py-1 text-xs font-medium text-white backdrop-blur">
-                Archivé
-              </span>
-            )}
           </div>
           <div className="absolute bottom-4 left-4 right-4">
             <p className="font-display text-2xl font-semibold text-white drop-shadow">
@@ -84,7 +65,7 @@ export function PropertyCard({ property, index = 0, isAdmin = false, onArchive, 
 
           <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-400">
             <MapPin className="h-3.5 w-3.5 shrink-0 text-brand-500" />
-            <span className="truncate">{property.address || property.city || "—"}</span>
+            <span className="truncate">{governorateOf(property)}</span>
           </div>
 
           {property.description && (
@@ -114,28 +95,6 @@ export function PropertyCard({ property, index = 0, isAdmin = false, onArchive, 
           </div>
         </div>
       </Link>
-
-      {isAdmin && (
-        <div className="border-t border-white/5 p-3 bg-slate-900/60">
-          {property.archived ? (
-            <button
-              onClick={handleUnarchiveClick}
-              className="flex items-center gap-2 w-full justify-center rounded-lg bg-emerald-600/20 px-3 py-2 text-xs text-emerald-400 hover:bg-emerald-600/30 transition"
-            >
-              <ArchiveRestore className="h-3.5 w-3.5" />
-              Restaurer
-            </button>
-          ) : (
-            <button
-              onClick={handleArchiveClick}
-              className="flex items-center gap-2 w-full justify-center rounded-lg bg-amber-600/20 px-3 py-2 text-xs text-amber-400 hover:bg-amber-600/30 transition"
-            >
-              <Archive className="h-3.5 w-3.5" />
-              Archiver
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

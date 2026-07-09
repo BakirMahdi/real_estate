@@ -15,15 +15,14 @@ import {
   Sun,
   Tag,
   Waves,
-  Archive,
-  ArchiveRestore,
 } from "lucide-react";
-import { api, isAdmin } from "../api/client";
+import { api } from "../api/client";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import type { Property } from "../types/property";
 import {
   formatArea,
   formatPrice,
+  governorateOf,
   listingTypeLabel,
   propertyGradient,
   sourceLabel,
@@ -58,7 +57,6 @@ export function PropertyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
-  const userIsAdmin = isAdmin();
 
   useEffect(() => {
     if (!id) return;
@@ -75,26 +73,6 @@ export function PropertyPage() {
       )
       .finally(() => setLoading(false));
   }, [id]);
-
-  const handleArchive = async () => {
-    if (!property) return;
-    try {
-      await api.adminArchive(property.id);
-      setProperty({ ...property, archived: true });
-    } catch (err) {
-      console.error("Archive error:", err);
-    }
-  };
-
-  const handleUnarchive = async () => {
-    if (!property) return;
-    try {
-      await api.adminUnarchive(property.id);
-      setProperty({ ...property, archived: false });
-    } catch (err) {
-      console.error("Unarchive error:", err);
-    }
-  };
 
   if (loading) return <LoadingSpinner label="Chargement de l'annonce..." />;
 
@@ -236,7 +214,7 @@ export function PropertyPage() {
             <DetailItem
               icon={MapPin}
               label="Localisation"
-              value={property.address || property.city || "—"}
+              value={governorateOf(property)}
             />
             <DetailItem icon={Maximize2} label="Surface" value={formatArea(property.area)} />
             <DetailItem icon={Tag} label="Source" value={sourceLabel(property.source)} />
@@ -303,27 +281,6 @@ export function PropertyPage() {
               Voir sur {sourceLabel(property.source)}
               <ArrowUpRight className="h-4 w-4" />
             </a>
-            {userIsAdmin && (
-              <>
-                {property.archived ? (
-                  <button
-                    onClick={handleUnarchive}
-                    className="btn-secondary bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border-emerald-600/30"
-                  >
-                    <ArchiveRestore className="h-4 w-4" />
-                    Restaurer
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleArchive}
-                    className="btn-secondary bg-amber-600/20 text-amber-400 hover:bg-amber-600/30 border-amber-600/30"
-                  >
-                    <Archive className="h-4 w-4" />
-                    Archiver
-                  </button>
-                )}
-              </>
-            )}
           </div>
         </div>
       </div>

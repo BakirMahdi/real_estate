@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS properties (
     area INTEGER,
     city TEXT,
     address TEXT,
+    governorate TEXT,
     url TEXT NOT NULL,
     bedrooms INTEGER,
     garage BOOLEAN,
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS properties (
 );
 
 CREATE INDEX IF NOT EXISTS idx_properties_city ON properties(city);
+CREATE INDEX IF NOT EXISTS idx_properties_governorate ON properties(governorate);
 CREATE INDEX IF NOT EXISTS idx_properties_type ON properties(property_type);
 CREATE INDEX IF NOT EXISTS idx_properties_listing_type ON properties(listing_type);
 CREATE INDEX IF NOT EXISTS idx_properties_price ON properties(price);

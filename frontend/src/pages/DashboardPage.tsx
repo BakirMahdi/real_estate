@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Activity,
+  Ban,
   CheckCircle2,
   Clock,
   Database,
   Download,
   Loader2,
+  Search,
   Server,
   XCircle,
   Lock,
@@ -13,9 +16,61 @@ import {
   Archive,
   Globe,
 } from "lucide-react";
-import { api, isAuthenticated, logout } from "../api/client";
-import { sourceLabel } from "../lib/format";
-import type { HealthStatus, ScrapeResult } from "../types/property";
+import { API_BASE, api, getAuthToken, isAuthenticated, logout } from "../api/client";
+import { formatPrice, governorateOf, sourceLabel, truncate } from "../lib/format";
+import type {
+  ArchiveSearchFilters,
+  HealthStatus,
+  Property,
+  ScrapeProgress,
+  ScrapeResult,
+} from "../types/property";
+
+const ARCHIVE_SOURCES = ["tayara", "mubawab", "expat"];
+
+function ArchiveToggle({
+  archived,
+  onToggle,
+}: {
+  archived: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={archived}
+      aria-label={archived ? "Restaurer l'annonce" : "Archiver l'annonce"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/40 ${
+        archived ? "bg-violet-500" : "bg-slate-600"
+      }`}
+    >
+      <span
+        className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+          archived ? "translate-x-[22px]" : "translate-x-0.5"
+        }`}
+      />
+    </button>
+  );
+}
+
+const PHASE_ORDER = ["rent", "sale", "land"] as const;
+
+const PHASE_LABELS: Record<string, string> = {
+  rent: "Location",
+  sale: "Vente",
+  land: "Terrains",
+};
+
+const STEP_LABELS: Record<string, string> = {
+  listing: "Collecte des pages",
+  enriching: "Détails des annonces",
+  inserting: "Insertion en base",
+};
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -53,16 +108,41 @@ export function DashboardPage() {
     user_count: number;
     ads_by_source: Record<string, number>;
   } | null>(null);
-  const [scrapeProgress, setScrapeProgress] = useState<{
-    total_sources: number;
-    completed_sources: number;
-    sources: Record<string, {
-      status: string;
-      pages_processed: number;
-      total_pages: number;
-      items_found: number;
-    }>;
-  } | null>(null);
+  const [scrapeProgress, setScrapeProgress] = useState<ScrapeProgress | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [scrapeCancelled, setScrapeCancelled] = useState(false);
+  const [archiveFilters, setArchiveFilters] = useState({
+    ad_id: "",
+    name: "",
+    location: "",
+    min_price: "",
+    max_price: "",
+    source: "",
+  });
+  const [archiveResults, setArchiveResults] = useState<Property[] | null>(null);
+  const [archiveLoading, setArchiveLoading] = useState(false);
+  const scrapingRef = useRef(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    scrapingRef.current = scraping;
+  }, [scraping]);
+
+  // Auto-cancel the scrape if the page is refreshed or closed while it runs.
+  // sendBeacon can't set headers, so the JWT goes in the query string; the
+  // backend only cancels manually started scrapes through this endpoint.
+  useEffect(() => {
+    const handlePageHide = () => {
+      if (scrapingRef.current) {
+        const token = getAuthToken() ?? "";
+        navigator.sendBeacon(
+          `${API_BASE}/scrape/cancel-beacon?token=${encodeURIComponent(token)}`
+        );
+      }
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => window.removeEventListener("pagehide", handlePageHide);
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!isAuthenticated()) {
@@ -133,6 +213,8 @@ export function DashboardPage() {
           }
           if (!status.is_scraping) {
             setScraping(false);
+            setCancelling(false);
+            setScrapeCancelled(Boolean(status.cancelled));
             if (status.results) {
               setScrapeResults(status.results);
             }
@@ -143,8 +225,13 @@ export function DashboardPage() {
               setScrapeProgress(status.progress);
             }
             refresh();
-          } else if (status.progress) {
-            setScrapeProgress(status.progress);
+          } else {
+            if (status.cancel_requested) {
+              setCancelling(true);
+            }
+            if (status.progress) {
+              setScrapeProgress(status.progress);
+            }
           }
         } catch (err) {
           if (err instanceof Error && err.message === "UNAUTHORIZED") {
@@ -196,6 +283,8 @@ export function DashboardPage() {
     setScrapeError(null);
     setScrapeResults(null);
     setScrapeDuration(0);
+    setScrapeCancelled(false);
+    setCancelling(false);
 
     try {
       await api.scrape();
@@ -206,6 +295,93 @@ export function DashboardPage() {
         logout();
       } else {
         setScrapeError(err instanceof Error ? err.message : "Échec du démarrage du scrape");
+      }
+    }
+  };
+
+  const cancelScrape = async () => {
+    setCancelling(true);
+    try {
+      await api.cancelScrape();
+    } catch (err) {
+      setCancelling(false);
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+        logout();
+      } else {
+        setScrapeError(err instanceof Error ? err.message : "Échec de l'annulation du scrape");
+      }
+    }
+  };
+
+  const setArchiveFilter = (key: keyof typeof archiveFilters, value: string) => {
+    setArchiveFilters((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const resetArchiveFilters = () => {
+    setArchiveFilters({
+      ad_id: "",
+      name: "",
+      location: "",
+      min_price: "",
+      max_price: "",
+      source: "",
+    });
+    setArchiveResults(null);
+  };
+
+  const handleArchiveSearch = async () => {
+    setArchiveLoading(true);
+    try {
+      const payload: ArchiveSearchFilters = {
+        ad_id: archiveFilters.ad_id.trim() || undefined,
+        name: archiveFilters.name.trim() || undefined,
+        location: archiveFilters.location.trim() || undefined,
+        min_price: archiveFilters.min_price ? Number(archiveFilters.min_price) : undefined,
+        max_price: archiveFilters.max_price ? Number(archiveFilters.max_price) : undefined,
+        source: archiveFilters.source || undefined,
+      };
+      const res = await api.adminArchiveSearch(payload);
+      setArchiveResults(res.items);
+    } catch (err) {
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+        logout();
+      }
+      setArchiveResults([]);
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const toggleArchive = async (property: Property) => {
+    const next = !property.archived;
+    // Optimistic update so the switch responds instantly.
+    setArchiveResults((prev) =>
+      prev
+        ? prev.map((p) => (p.id === property.id ? { ...p, archived: next } : p))
+        : prev,
+    );
+    try {
+      if (next) {
+        await api.adminArchive(property.id);
+      } else {
+        await api.adminUnarchive(property.id);
+      }
+      // Keep the archived KPI in sync.
+      api.getKpis().then(setKpis).catch(() => {});
+    } catch (err) {
+      // Revert on failure.
+      setArchiveResults((prev) =>
+        prev
+          ? prev.map((p) =>
+              p.id === property.id ? { ...p, archived: property.archived } : p,
+            )
+          : prev,
+      );
+      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+        setNeedsAuth(true);
+        logout();
       }
     }
   };
@@ -398,13 +574,179 @@ export function DashboardPage() {
         </div>
       )}
 
+      <div className="glass animate-slide-up mb-8 rounded-2xl p-6 shadow-card" style={{ animationDelay: "425ms" }}>
+        <div className="mb-2 flex items-center gap-2">
+          <Archive className="h-5 w-5 text-violet-400" />
+          <h2 className="font-display text-xl font-semibold text-white">Archivage manuel</h2>
+        </div>
+        <p className="mb-6 text-sm text-slate-400">
+          Filtrez les annonces par ID, nom, localisation, prix ou source, puis
+          activez l&apos;interrupteur à droite de chaque ligne pour l&apos;archiver
+          ou la restaurer. Cliquez sur une ligne pour ouvrir l&apos;annonce.
+        </p>
+
+        <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">ID</label>
+            <input
+              type="text"
+              placeholder="ID ou ad_id"
+              value={archiveFilters.ad_id}
+              onChange={(e) => setArchiveFilter("ad_id", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleArchiveSearch()}
+              className="input-field w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">Nom</label>
+            <input
+              type="text"
+              placeholder="Titre de l'annonce"
+              value={archiveFilters.name}
+              onChange={(e) => setArchiveFilter("name", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleArchiveSearch()}
+              className="input-field w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">Localisation</label>
+            <input
+              type="text"
+              placeholder="Ville ou adresse"
+              value={archiveFilters.location}
+              onChange={(e) => setArchiveFilter("location", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleArchiveSearch()}
+              className="input-field w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">Prix min (DT)</label>
+            <input
+              type="number"
+              min={0}
+              placeholder="0"
+              value={archiveFilters.min_price}
+              onChange={(e) => setArchiveFilter("min_price", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleArchiveSearch()}
+              className="input-field w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">Prix max (DT)</label>
+            <input
+              type="number"
+              min={0}
+              placeholder="∞"
+              value={archiveFilters.max_price}
+              onChange={(e) => setArchiveFilter("max_price", e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleArchiveSearch()}
+              className="input-field w-full"
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-400">Source</label>
+            <select
+              value={archiveFilters.source}
+              onChange={(e) => setArchiveFilter("source", e.target.value)}
+              className="input-field w-full"
+            >
+              <option value="">Toutes</option>
+              {ARCHIVE_SOURCES.map((src) => (
+                <option key={src} value={src}>
+                  {sourceLabel(src)}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="mb-6 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleArchiveSearch}
+            disabled={archiveLoading}
+            className="btn-primary disabled:opacity-50"
+          >
+            {archiveLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="h-4 w-4" />
+            )}
+            Rechercher
+          </button>
+          {archiveResults !== null && (
+            <button
+              type="button"
+              onClick={resetArchiveFilters}
+              className="rounded-xl px-4 py-2 text-sm text-slate-400 transition hover:text-white"
+            >
+              Effacer
+            </button>
+          )}
+        </div>
+
+        {archiveLoading ? (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-slate-500" />
+          </div>
+        ) : archiveResults === null ? null : archiveResults.length === 0 ? (
+          <p className="py-8 text-center text-sm text-slate-500">
+            Aucune annonce trouvée pour cette recherche.
+          </p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-white/5">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-white/5 bg-slate-900/60 text-xs text-slate-500">
+                  <th className="px-4 py-3 font-medium">ID</th>
+                  <th className="px-4 py-3 font-medium">Nom</th>
+                  <th className="px-4 py-3 font-medium">Localisation</th>
+                  <th className="px-4 py-3 font-medium">Prix</th>
+                  <th className="px-4 py-3 font-medium">Source</th>
+                  <th className="px-4 py-3 text-right font-medium">Archivé</th>
+                </tr>
+              </thead>
+              <tbody>
+                {archiveResults.map((property) => (
+                  <tr
+                    key={property.id}
+                    onClick={() => navigate(`/property/${property.id}`)}
+                    className="cursor-pointer border-b border-white/5 transition last:border-0 hover:bg-slate-800/40"
+                  >
+                    <td className="px-4 py-3 font-mono text-slate-400">{property.id}</td>
+                    <td className="px-4 py-3 font-medium text-white">
+                      {truncate(property.title, 45)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-400">
+                      {governorateOf(property)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-300">{formatPrice(property.price)}</td>
+                    <td className="px-4 py-3 text-slate-400">{sourceLabel(property.source)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-end">
+                        <ArchiveToggle
+                          archived={Boolean(property.archived)}
+                          onToggle={() => toggleArchive(property)}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       <div className="glass animate-slide-up rounded-2xl p-6 shadow-card" style={{ animationDelay: "450ms" }}>
         <h2 className="mb-2 font-display text-xl font-semibold text-white">
           Lancer un scrape
         </h2>
         <p className="mb-6 text-sm text-slate-400">
-          Collecte les nouvelles annonces depuis Tayara et Mubawab. Les doublons
-          sont ignorés automatiquement via l&apos;ID source.
+          Chaque site est scrapé en 3 phases : Location, Vente, puis Terrains.
+          La base est mise à jour à la fin de chaque phase et la mémoire est
+          libérée. Les doublons sont ignorés automatiquement via l&apos;ID source.
+          Le détail complet est écrit dans <span className="font-mono text-slate-300">logs/scrape_log.json</span>.
         </p>
 
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-b border-white/5 py-4">
@@ -425,27 +767,62 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={runScrape}
-          disabled={scraping}
-          className="btn-primary"
-        >
-          {scraping ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Scrape en cours… ({scrapeDuration}s)
-            </>
-          ) : (
-            <>
-              <Download className="h-4 w-4" />
-              Démarrer le scrape
-            </>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={runScrape}
+            disabled={scraping}
+            className="btn-primary"
+          >
+            {scraping ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Scrape en cours… ({scrapeDuration}s)
+              </>
+            ) : (
+              <>
+                <Download className="h-4 w-4" />
+                Démarrer le scrape
+              </>
+            )}
+          </button>
+
+          {scraping && (
+            <button
+              type="button"
+              onClick={cancelScrape}
+              disabled={cancelling}
+              className="inline-flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-400 transition hover:bg-red-500/20 disabled:opacity-50"
+            >
+              {cancelling ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Annulation en cours…
+                </>
+              ) : (
+                <>
+                  <Ban className="h-4 w-4" />
+                  Annuler le scrape
+                </>
+              )}
+            </button>
           )}
-        </button>
+        </div>
+
+        <p className="mt-3 text-xs text-slate-500">
+          En cas d&apos;annulation (bouton, actualisation ou fermeture de la page),
+          toutes les modifications de ce scrape sont annulées en base.
+        </p>
 
         {scrapeError && (
           <p className="mt-4 text-sm text-red-400">{scrapeError}</p>
+        )}
+
+        {scrapeCancelled && !scraping && (
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-400">
+            <Ban className="h-4 w-4 shrink-0" />
+            Scrape annulé — toutes les modifications apportées à la base pendant ce scrape ont été annulées.
+          </div>
         )}
 
         {scraping && scrapeProgress && (
@@ -457,27 +834,67 @@ export function DashboardPage() {
             </div>
             <div className="space-y-2">
               {Object.entries(scrapeProgress.sources).map(([source, progress]) => (
-                <div key={source} className="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2">
-                  <div className="flex items-center gap-2">
-                    <div className={`h-2 w-2 rounded-full ${
-                      progress.status === 'completed' ? 'bg-emerald-400' :
-                      progress.status === 'running' ? 'bg-brand-400 animate-pulse' :
-                      progress.status === 'error' ? 'bg-red-400' :
-                      'bg-slate-500'
-                    }`} />
-                    <span className="text-xs text-slate-300">{source.replace('scrape_', '')}</span>
+                <div key={source} className="rounded-lg bg-slate-800/50 px-3 py-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full ${
+                        progress.status === 'completed' ? 'bg-emerald-400' :
+                        progress.status === 'running' ? 'bg-brand-400 animate-pulse' :
+                        progress.status === 'error' ? 'bg-red-400' :
+                        progress.status === 'cancelled' ? 'bg-amber-400' :
+                        'bg-slate-500'
+                      }`} />
+                      <span className="text-xs font-medium text-slate-300">{sourceLabel(source)}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-slate-400">
+                      {progress.status === 'running' && progress.phase && (
+                        <span className="text-brand-400">
+                          Phase {PHASE_LABELS[progress.phase] ?? progress.phase}
+                          {progress.step ? ` — ${STEP_LABELS[progress.step] ?? progress.step}` : ""}
+                          {progress.step === 'enriching' && progress.total_pages > 0
+                            ? ` ${progress.pages_processed}/${progress.total_pages}`
+                            : progress.step === 'listing'
+                              ? ` (${progress.pages_processed} pages)`
+                              : ""}
+                        </span>
+                      )}
+                      {progress.status === 'completed' && (
+                        <span className="text-emerald-400">Terminé</span>
+                      )}
+                      {progress.status === 'error' && (
+                        <span className="text-red-400">Erreur</span>
+                      )}
+                      {progress.status === 'cancelled' && (
+                        <span className="text-amber-400">Annulé</span>
+                      )}
+                      {progress.status === 'pending' && (
+                        <span className="text-slate-500">En attente</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-4 text-xs text-slate-400">
-                    <span>{progress.items_found} annonces</span>
-                    {progress.status === 'running' && (
-                      <span className="text-brand-400">En cours...</span>
-                    )}
-                    {progress.status === 'completed' && (
-                      <span className="text-emerald-400">Terminé</span>
-                    )}
-                    {progress.status === 'error' && (
-                      <span className="text-red-400">Erreur</span>
-                    )}
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {PHASE_ORDER.map((phase) => {
+                      const stats = progress.phases?.[phase];
+                      const phaseStatus = stats?.status ?? 'pending';
+                      return (
+                        <div
+                          key={phase}
+                          className={`rounded-md px-2 py-1 text-[11px] ${
+                            phaseStatus === 'completed' ? 'bg-emerald-500/10 text-emerald-400' :
+                            phaseStatus === 'running' ? 'bg-brand-500/10 text-brand-400' :
+                            'bg-slate-900/60 text-slate-500'
+                          }`}
+                        >
+                          <span className="font-medium">{PHASE_LABELS[phase]}</span>
+                          {phaseStatus === 'completed' && stats && (
+                            <span className="ml-1">
+                              {stats.count} · +{stats.inserted}
+                            </span>
+                          )}
+                          {phaseStatus === 'running' && <span className="ml-1">en cours…</span>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
@@ -496,6 +913,7 @@ export function DashboardPage() {
               <thead>
                 <tr className="border-b border-white/5 bg-slate-900/60 text-xs text-slate-500">
                   <th className="px-4 py-3 font-medium">Source</th>
+                  <th className="px-4 py-3 font-medium">Phase</th>
                   <th className="px-4 py-3 font-medium">Trouvées</th>
                   <th className="px-4 py-3 font-medium">Insérées</th>
                   <th className="px-4 py-3 font-medium">Déjà en base</th>
@@ -506,25 +924,59 @@ export function DashboardPage() {
               <tbody>
                 {scrapeResults.map((result) => {
                   const sourceKey = result.source.replace("scrape_", "");
+                  if (result.error) {
+                    return (
+                      <tr key={result.source} className="border-b border-white/5 last:border-0">
+                        <td className="px-4 py-3 font-medium text-white">{sourceLabel(sourceKey)}</td>
+                        <td colSpan={6} className="px-4 py-3 text-red-400">{result.error}</td>
+                      </tr>
+                    );
+                  }
+                  // Grand-total summary row across every source.
+                  if (result.source === "total") {
+                    return (
+                      <tr key={result.source} className="border-t-2 border-white/10 bg-slate-900/60 font-semibold last:border-b-0">
+                        <td className="px-4 py-3 text-white">Total</td>
+                        <td className="px-4 py-3" />
+                        <td className="px-4 py-3 text-slate-200">{result.count ?? 0}</td>
+                        <td className="px-4 py-3 text-emerald-400">{result.inserted ?? 0}</td>
+                        <td className="px-4 py-3 text-slate-300">{result.skipped ?? 0}</td>
+                        <td className="px-4 py-3 text-amber-400">{result.errors ?? 0}</td>
+                        <td className="px-4 py-3 text-violet-400">{result.archived ?? 0}</td>
+                      </tr>
+                    );
+                  }
+                  const phaseRows = result.phases
+                    ? PHASE_ORDER.filter((phase) => result.phases?.[phase]).map((phase) => {
+                        const stats = result.phases![phase];
+                        return (
+                          <tr key={`${result.source}-${phase}`} className="border-b border-white/5 bg-slate-900/30 text-xs">
+                            <td className="px-4 py-2" />
+                            <td className="px-4 py-2 text-slate-400">{PHASE_LABELS[phase] ?? phase}</td>
+                            <td className="px-4 py-2 text-slate-400">{stats.count}</td>
+                            <td className="px-4 py-2 text-emerald-400/80">{stats.inserted}</td>
+                            <td className="px-4 py-2 text-slate-500">{stats.skipped}</td>
+                            <td className="px-4 py-2 text-amber-400/80">{stats.errors}</td>
+                            <td className="px-4 py-2" />
+                          </tr>
+                        );
+                      })
+                    : [];
                   return (
-                    <tr key={result.source} className="border-b border-white/5 last:border-0">
-                      <td className="px-4 py-3 font-medium text-white">
-                        {sourceLabel(sourceKey)}
-                      </td>
-                      {result.error ? (
-                        <td colSpan={5} className="px-4 py-3 text-red-400">
-                          {result.error}
+                    <Fragment key={result.source}>
+                      <tr className="border-b border-white/5">
+                        <td className="px-4 py-3 font-medium text-white">
+                          {sourceLabel(sourceKey)}
                         </td>
-                      ) : (
-                        <>
-                          <td className="px-4 py-3 text-slate-300">{result.count}</td>
-                          <td className="px-4 py-3 text-emerald-400">{result.inserted}</td>
-                          <td className="px-4 py-3 text-slate-400">{result.skipped}</td>
-                          <td className="px-4 py-3 text-amber-400">{result.errors}</td>
-                          <td className="px-4 py-3 text-violet-400">{result.archived || 0}</td>
-                        </>
-                      )}
-                    </tr>
+                        <td className="px-4 py-3 text-slate-500">Total</td>
+                        <td className="px-4 py-3 text-slate-300">{result.count}</td>
+                        <td className="px-4 py-3 text-emerald-400">{result.inserted}</td>
+                        <td className="px-4 py-3 text-slate-400">{result.skipped}</td>
+                        <td className="px-4 py-3 text-amber-400">{result.errors}</td>
+                        <td className="px-4 py-3 text-violet-400">{result.archived || 0}</td>
+                      </tr>
+                      {phaseRows}
+                    </Fragment>
                   );
                 })}
               </tbody>

@@ -1,4 +1,5 @@
 from .db import get_conn
+from .governorate import resolve_governorate
 
 
 def property_exists(source, ad_id):
@@ -28,6 +29,25 @@ def bulk_get_existing_ids(source, ad_ids):
     cur.close()
     conn.close()
     return existing
+
+
+def get_active_ad_ids(source):
+    """Return the set of ad_ids that already exist (non-archived) for a source.
+
+    Used to skip re-downloading detail pages for ads we already have — the
+    single biggest scrape speed-up on a re-run, since most listings are
+    unchanged from the previous scrape.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT ad_id FROM properties WHERE source = %s AND archived = FALSE",
+        (source,),
+    )
+    ids = {row[0] for row in cur.fetchall()}
+    cur.close()
+    conn.close()
+    return ids
 
 
 def bulk_get_latest_properties(source, ad_ids):
@@ -166,11 +186,11 @@ def insert_property(data):
     cur.execute("""
         INSERT INTO properties (
             source, ad_id, property_type, listing_type,
-            title, description, price, area, city, address, url,
+            title, description, price, area, city, address, governorate, url,
             bedrooms, garage, furnished, terrace, pool,
             subcategory, images
         )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         data["source"],
         data["ad_id"],
@@ -182,6 +202,7 @@ def insert_property(data):
         data["area"],
         data["city"],
         data["address"],
+        resolve_governorate(data.get("city"), data.get("address")),
         data["url"],
         *house_land_values,
         data.get("subcategory"),
@@ -194,14 +215,23 @@ def insert_property(data):
 
 
 def bulk_insert_properties(items):
-    """Insert multiple properties in a single connection/transaction. Returns (inserted, errors) counts."""
+    """Insert multiple properties, committing after each row.
+
+    Returns (inserted, errors, inserted_ids). The inserted row ids let the
+    orchestrator roll everything back if the scrape is cancelled.
+
+    Each row is committed individually (rather than once at the end) so that a
+    single bad row's rollback can only discard itself, not every successful
+    insert that preceded it in the same connection/transaction.
+    """
     if not items:
-        return 0, 0
+        return 0, 0, []
 
     conn = get_conn()
     cur = conn.cursor()
     inserted = 0
     errors = 0
+    inserted_ids = []
 
     for data in items:
         try:
@@ -209,11 +239,12 @@ def bulk_insert_properties(items):
             cur.execute("""
                 INSERT INTO properties (
                     source, ad_id, property_type, listing_type,
-                    title, description, price, area, city, address, url,
+                    title, description, price, area, city, address, governorate, url,
                     bedrooms, garage, furnished, terrace, pool,
                     subcategory, images, archived
                 )
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                RETURNING id
             """, (
                 data["source"],
                 data["ad_id"],
@@ -225,19 +256,38 @@ def bulk_insert_properties(items):
                 data["area"],
                 data["city"],
                 data["address"],
+                resolve_governorate(data.get("city"), data.get("address")),
                 data["url"],
                 *house_land_values,
                 data.get("subcategory"),
                 data.get("images", []),
                 False,  # archived = False for new inserts
             ))
+            row = cur.fetchone()
+            conn.commit()
             inserted += 1
+            if row:
+                inserted_ids.append(row[0])
         except Exception as e:
             conn.rollback()
             errors += 1
             print(f"ERROR bulk-inserting {data.get('source')}/{data.get('ad_id')}: {type(e).__name__}: {e}")
 
+    cur.close()
+    conn.close()
+    return inserted, errors, inserted_ids
+
+
+def delete_properties_by_ids(ids):
+    """Delete property rows by primary key. Used to roll back a cancelled scrape."""
+    if not ids:
+        return 0
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM properties WHERE id = ANY(%s)", (list(ids),))
+    deleted = cur.rowcount
     conn.commit()
     cur.close()
     conn.close()
-    return inserted, errors
+    return deleted

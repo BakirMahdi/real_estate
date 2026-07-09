@@ -25,10 +25,26 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # Concurrent detail-page (détails des annonces) fetches per site. Higher =
+      # faster enrichment, until the target sites start throttling. Memory is
+      # not the constraint here (enrichment is network-bound), so this can go up
+      # as long as the sites tolerate it.
+      SCRAPER_DETAIL_WORKERS: "16"
+      # Number of websites scraped at the same time. All 3 run concurrently;
+      # they hit different domains, so total time ~= the slowest single site.
+      SCRAPER_SITE_CONCURRENCY: "3"
     ports:
       - "8000:8000"
     volumes:
       - ./logs:/app/logs
+    # Safety net: cap the backend's memory so a heavy scrape can never consume
+    # all host RAM and drag the whole machine (and the separate DB container)
+    # down with it. If the limit is hit the backend alone is restarted
+    # (restart: unless-stopped) instead of everything freezing. Raise this if
+    # the host has plenty of RAM and you want more scrape concurrency.
+    mem_limit: 2g
+    memswap_limit: 2g # equal to mem_limit => no swap, so no slow swap-thrashing
     depends_on:
       db:
         condition: service_healthy

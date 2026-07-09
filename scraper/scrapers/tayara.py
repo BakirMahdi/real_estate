@@ -5,13 +5,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from bs4 import BeautifulSoup
 
-SOURCE = "tayara"
-MAX_PAGES = 10000  # Scrape all pages (very high limit)
-DETAIL_WORKERS = 8
+from ..cancellation import raise_if_cancelled
+from ..http_client import get_session
 
+import os
+
+SOURCE = "tayara"
+MAX_PAGES = 500  # Safety cap; real pagination stops as soon as a batch is empty
+PAGE_BATCH_SIZE = int(os.getenv("SCRAPER_PAGE_BATCH_SIZE", "8"))  # Concurrent page fetches per batch
+DETAIL_WORKERS = int(os.getenv("SCRAPER_DETAIL_WORKERS", "10"))  # Concurrent detail-page fetches
+
+# Phase order: rent (non-land) first, then sale (non-land), then land (rent+sale)
 LISTING_CATEGORIES = (
-    ("sale", "https://www.tayara.tn/listing/c/immobilier/a-vendre/"),
     ("rent", "https://www.tayara.tn/listing/c/immobilier/a-louer/"),
+    ("sale", "https://www.tayara.tn/listing/c/immobilier/a-vendre/"),
 )
 
 _HEADERS = {
@@ -184,7 +191,7 @@ def determine_property_type(ad):
 def scrape_detail_page(url):
     """Fetch the Tayara item page for all images and the full description."""
     try:
-        response = requests.get(url, headers=_HEADERS, timeout=20)
+        response = get_session().get(url, headers=_HEADERS, timeout=20)
         response.raise_for_status()
         soup = BeautifulSoup(response.text, "html.parser")
         next_data = soup.find("script", id="__NEXT_DATA__")
@@ -312,7 +319,7 @@ def _fetch_page(listing_type, base_url, page_number):
     page_url = build_page_url(base_url, page_number)
     print(f"DEBUG: Connecting to Tayara {listing_type} page {page_number}: {page_url}")
     try:
-        response = requests.get(page_url, headers=_HEADERS, timeout=20)
+        response = get_session().get(page_url, headers=_HEADERS, timeout=20)
         print(f"DEBUG: Tayara page {page_number} status code: {response.status_code}")
         if response.status_code != 200:
             print(f"DEBUG: Tayara page {page_number} blocked or error. Status: {response.status_code}")
@@ -325,33 +332,45 @@ def _fetch_page(listing_type, base_url, page_number):
         return page_number, []
 
 
-def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES, progress_callback=None):
-    listings = []
-
-    # Fetch all listing pages concurrently
+def _collect_candidates(phase, listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES,
+                        progress_callback=None, cancel_event=None):
+    """Fetch listing pages and return raw (un-enriched) candidate dicts."""
+    # Fetch listing pages in small concurrent batches, stopping as soon as a
+    # batch comes back empty (i.e. we've gone past the last real page).
+    # Firing all max_pages requests at once used to trigger the site's
+    # rate limiting, which then stalled the whole scrape with timeouts.
     all_hits_by_page = {}
     pages_completed = 0
-    total_pages = max_pages
-    
-    with ThreadPoolExecutor(max_workers=max_pages) as executor:
-        futures = {
-            executor.submit(_fetch_page, listing_type, base_url, p): p
-            for p in range(1, max_pages + 1)
-        }
-        for future in as_completed(futures):
-            page_number, hits = future.result()
-            all_hits_by_page[page_number] = hits
-            pages_completed += 1
-            
-            # Update progress callback
-            if progress_callback:
-                items_found = sum(len(h) for h in all_hits_by_page.values())
-                progress_callback(pages_completed, total_pages, items_found)
+    page = 1
+
+    while page <= max_pages:
+        raise_if_cancelled(cancel_event)
+        batch = list(range(page, min(page + PAGE_BATCH_SIZE, max_pages + 1)))
+        with ThreadPoolExecutor(max_workers=len(batch)) as executor:
+            futures = {
+                executor.submit(_fetch_page, listing_type, base_url, p): p
+                for p in batch
+            }
+            batch_hits_found = 0
+            for future in as_completed(futures):
+                raise_if_cancelled(cancel_event, executor)
+                page_number, hits = future.result()
+                all_hits_by_page[page_number] = hits
+                batch_hits_found += len(hits)
+                pages_completed += 1
+
+                if progress_callback:
+                    items_found = sum(len(h) for h in all_hits_by_page.values())
+                    progress_callback(phase, "listing", pages_completed, 0, items_found)
+
+        if batch_hits_found == 0:
+            break
+        page += PAGE_BATCH_SIZE
 
     # Collect candidates in page order to maintain determinism
     candidates = []
-    for page_number in range(1, max_pages + 1):
-        for ad in all_hits_by_page.get(page_number, []):
+    for page_number in sorted(all_hits_by_page):
+        for ad in all_hits_by_page[page_number]:
             ad_id = clean_text(ad.get("id"))
             if not ad_id or ad_id in seen_ad_ids:
                 continue
@@ -361,43 +380,78 @@ def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES, pr
             seen_ad_ids.add(ad_id)
             candidates.append(data)
 
-    # Identify which listings need detail enrichment and fetch them concurrently
+    return candidates
+
+
+def _enrich_candidates(phase, candidates, progress_callback=None, cancel_event=None):
+    """Fetch detail pages for candidates that are missing images/description."""
     needs_enrichment = [
         d for d in candidates
         if len(d.get("images") or []) < 2 or len(d.get("description") or "") < 300
     ]
+    total_to_enrich = len(needs_enrichment)
     enriched_map = {}
     if needs_enrichment:
         with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
             futures = {executor.submit(enrich_from_detail, d): d["ad_id"] for d in needs_enrichment}
+            enriched_count = 0
             for future in as_completed(futures):
+                raise_if_cancelled(cancel_event, executor)
                 result = future.result()
                 enriched_map[result["ad_id"]] = result
+                enriched_count += 1
+                if progress_callback:
+                    progress_callback(phase, "enriching", enriched_count, total_to_enrich, len(candidates))
 
-    for data in candidates:
-        if data["ad_id"] in enriched_map:
-            listings.append(enriched_map[data["ad_id"]])
-        else:
-            listings.append(data)
-
-    print(f"DEBUG: Extracted {len(listings)} real estate listings from Tayara ({listing_type}).")
-    return listings
+    return [enriched_map.get(d["ad_id"], d) for d in candidates]
 
 
-def scrape_tayara(max_pages=MAX_PAGES, progress_callback=None):
-    listings = []
+def _split_known(candidates, known_ad_ids):
+    """Split candidates into already-in-DB markers and to-be-enriched new ones."""
+    known = [
+        {"source": SOURCE, "ad_id": d["ad_id"], "_known": True}
+        for d in candidates if d["ad_id"] in known_ad_ids
+    ]
+    new = [d for d in candidates if d["ad_id"] not in known_ad_ids]
+    return known, new
+
+
+def iter_scrape_phases(max_pages=MAX_PAGES, progress_callback=None, cancel_event=None,
+                       known_ad_ids=None):
+    """Yield (phase, listings) one phase at a time: rent, then sale, then land.
+
+    Rent/sale phases contain only non-land properties; land listings found in
+    both categories are held back (as small raw dicts) and enriched/yielded in
+    the final land phase, so the orchestrator can flush each phase to the DB
+    and free the memory before the next one starts. Ads already in the DB
+    (known_ad_ids) skip enrichment entirely.
+    """
+    known_ad_ids = known_ad_ids or set()
     seen_ad_ids = set()
+    held_land = []
 
     for listing_type, base_url in LISTING_CATEGORIES:
-        category_listings = scrape_category(
-            listing_type,
-            base_url,
-            seen_ad_ids,
-            max_pages=max_pages,
-            progress_callback=progress_callback,
+        candidates = _collect_candidates(
+            listing_type, listing_type, base_url, seen_ad_ids,
+            max_pages=max_pages, progress_callback=progress_callback, cancel_event=cancel_event,
         )
-        listings.extend(category_listings)
-        print(f"DEBUG: Extracted {len(category_listings)} new {listing_type} listings from Tayara.")
+        non_land = [d for d in candidates if d["type"] != "land"]
+        held_land.extend(d for d in candidates if d["type"] == "land")
+        known, new = _split_known(non_land, known_ad_ids)
+        listings = known + _enrich_candidates(listing_type, new, progress_callback, cancel_event)
+        print(f"DEBUG: Tayara {listing_type} phase: {len(listings)} listings ({len(known)} known).")
+        yield listing_type, listings
 
+    known, new = _split_known(held_land, known_ad_ids)
+    land_listings = known + _enrich_candidates("land", new, progress_callback, cancel_event)
+    print(f"DEBUG: Tayara land phase: {len(land_listings)} listings ({len(known)} known).")
+    yield "land", land_listings
+
+
+def scrape_tayara(max_pages=MAX_PAGES, progress_callback=None, cancel_event=None, known_ad_ids=None):
+    """Backward-compatible wrapper: run all phases and return one flat list."""
+    listings = []
+    for _phase, items in iter_scrape_phases(max_pages, progress_callback, cancel_event, known_ad_ids):
+        listings.extend(items)
     print(f"DEBUG: Extracted {len(listings)} unique real estate listings from Tayara.")
     return listings

@@ -1,12 +1,14 @@
 import type {
+  ArchiveSearchFilters,
   HealthStatus,
   Property,
   PropertyListResponse,
+  ScrapeProgress,
   ScrapeResult,
   SearchFilters,
 } from "../types/property";
 
-const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
+export const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 
 let authToken: string | null = null;
 
@@ -96,21 +98,16 @@ export const api = {
   health: () => request<HealthStatus>("/health"),
   healthDb: () => request<HealthStatus>("/health/db"),
   scrape: () => request<{ status: string }>("/scrape", { method: "POST" }),
-  getScrapeStatus: () => request<{ 
-    is_scraping: boolean; 
-    results: ScrapeResult[] | null; 
-    error: string | null; 
+  cancelScrape: () => request<{ status: string }>("/scrape/cancel", { method: "POST" }),
+  getScrapeStatus: () => request<{
+    is_scraping: boolean;
+    cancel_requested: boolean;
+    cancelled: boolean;
+    triggered_by: string | null;
+    results: ScrapeResult[] | null;
+    error: string | null;
     next_scrape_time: number | null;
-    progress?: {
-      total_sources: number;
-      completed_sources: number;
-      sources: Record<string, {
-        status: string;
-        pages_processed: number;
-        total_pages: number;
-        items_found: number;
-      }>;
-    };
+    progress?: ScrapeProgress;
   }>("/scrape/status"),
   getAllProperties: (includeArchived: boolean = false) => 
     request<PropertyListResponse>(`/properties/all?include_archived=${includeArchived}`),
@@ -135,6 +132,10 @@ export const api = {
     }),
   adminSearch: (searchId: string, includeArchived: boolean = false) =>
     request<{ count: number; items: Property[] }>(`/admin/search?search_id=${searchId}&include_archived=${includeArchived}`),
+  adminArchiveSearch: (filters: ArchiveSearchFilters) => {
+    const query = buildQuery({ ...filters } as Record<string, string | number | undefined>);
+    return request<{ count: number; items: Property[] }>(`/admin/archive-search${query}`);
+  },
   adminArchive: (propertyId: number) =>
     request<{ message: string }>(`/admin/${propertyId}/archive`, {
       method: "POST",

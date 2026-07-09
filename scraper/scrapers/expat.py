@@ -1,7 +1,11 @@
+import os
 import requests
 from bs4 import BeautifulSoup
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import re
+
+from ..cancellation import raise_if_cancelled
+from ..http_client import get_session
 
 
 def clean_text(s):
@@ -10,8 +14,9 @@ def clean_text(s):
 
 SOURCE = "expat"
 BASE_URL = "https://www.expat.com/fr/immobilier/afrique/tunisie/"
-MAX_PAGES = 10000  # Scrape all pages (very high limit)
-DETAIL_WORKERS = 5
+MAX_PAGES = 2000  # Safety cap; real pagination stops as soon as a batch is empty
+PAGE_BATCH_SIZE = int(os.getenv("SCRAPER_PAGE_BATCH_SIZE", "8"))  # Concurrent page fetches per batch
+DETAIL_WORKERS = int(os.getenv("SCRAPER_DETAIL_WORKERS", "10"))  # Concurrent detail-page fetches
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -100,7 +105,7 @@ def scrape_expat_detail(url: str):
     ad_id = ad_id_match.group(1)
 
     try:
-        r = requests.get(url, headers=_HEADERS, timeout=20)
+        r = get_session().get(url, headers=_HEADERS, timeout=20)
         if r.status_code != 200:
             print(f"DEBUG: Expat detail {url} returned {r.status_code}")
             return None
@@ -197,7 +202,7 @@ def fetch_page_links(page: int) -> list:
     url = BASE_URL if page == 1 else f"{BASE_URL}{page}/"
     print(f"DEBUG: Connecting to Expat page {page}: {url}")
     try:
-        r = requests.get(url, headers=_HEADERS, timeout=20)
+        r = get_session().get(url, headers=_HEADERS, timeout=20)
         print(f"DEBUG: Expat page {page} status: {r.status_code}")
         if r.status_code != 200:
             return []
@@ -222,31 +227,116 @@ def fetch_page_links(page: int) -> list:
         return []
 
 
-def scrape_expat(max_pages: int = MAX_PAGES, progress_callback=None) -> list:
-    """Scrape Expat Tunisia real estate listings across multiple pages."""
+def _classify_link(url: str) -> str:
+    """Best-effort phase classification (rent/sale/land) from the URL slug."""
+    if determine_property_type(url, "", "") == "land":
+        return "land"
+    url_lower = url.lower()
+    if any(kw in url_lower for kw in _SALE_PATH_KEYWORDS):
+        return "sale"
+    if any(kw in url_lower for kw in _RENT_PATH_KEYWORDS):
+        return "rent"
+    return "rent"
+
+
+def _collect_links(max_pages=MAX_PAGES, progress_callback=None, cancel_event=None) -> set:
+    """Fetch listing pages in small batches, stopping once a batch is empty."""
     all_links: set = set()
     pages_completed = 0
-    total_pages = max_pages
+    page = 1
 
-    with ThreadPoolExecutor(max_workers=max_pages) as executor:
-        futures = [executor.submit(fetch_page_links, p) for p in range(1, max_pages + 1)]
-        for future in as_completed(futures):
-            all_links.update(future.result())
-            pages_completed += 1
-            
-            # Update progress callback
-            if progress_callback:
-                progress_callback(pages_completed, total_pages, len(all_links))
+    while page <= max_pages:
+        raise_if_cancelled(cancel_event)
+        batch = list(range(page, min(page + PAGE_BATCH_SIZE, max_pages + 1)))
+        with ThreadPoolExecutor(max_workers=len(batch)) as executor:
+            futures = [executor.submit(fetch_page_links, p) for p in batch]
+            batch_links_found = 0
+            for future in as_completed(futures):
+                raise_if_cancelled(cancel_event, executor)
+                links = future.result()
+                batch_links_found += len(links)
+                all_links.update(links)
+                pages_completed += 1
+
+                if progress_callback:
+                    progress_callback("rent", "listing", pages_completed, 0, len(all_links))
+
+        if batch_links_found == 0:
+            break
+        page += PAGE_BATCH_SIZE
 
     print(f"DEBUG: Total unique Expat links to scrape: {len(all_links)}")
+    return all_links
+
+
+def _extract_ad_id(url: str):
+    m = re.search(r"/(\d+)-[^/]+\.html", url)
+    return m.group(1) if m else None
+
+
+def _scrape_details(phase, links, progress_callback=None, cancel_event=None, known_ad_ids=None) -> list:
+    """Fetch detail pages for one phase's links, reporting progress per page.
+
+    Links whose ad_id is already in the DB are passed through as lightweight
+    "known" markers instead of being downloaded again.
+    """
+    known_ad_ids = known_ad_ids or set()
     listings = []
 
-    with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
-        futures = {executor.submit(scrape_expat_detail, link): link for link in all_links}
-        for future in as_completed(futures):
-            data = future.result()
-            if data:
-                listings.append(data)
+    to_fetch = []
+    for url in links:
+        ad_id = _extract_ad_id(url)
+        if ad_id and ad_id in known_ad_ids:
+            listings.append({"source": SOURCE, "ad_id": ad_id, "_known": True})
+        else:
+            to_fetch.append(url)
 
+    total = len(to_fetch)
+    done = 0
+    if to_fetch:
+        with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
+            futures = {executor.submit(scrape_expat_detail, link): link for link in to_fetch}
+            for future in as_completed(futures):
+                raise_if_cancelled(cancel_event, executor)
+                data = future.result()
+                if data:
+                    listings.append(data)
+                done += 1
+                if progress_callback:
+                    progress_callback(phase, "enriching", done, total, len(listings))
+    elif progress_callback:
+        progress_callback(phase, "enriching", 0, 0, len(listings))
+
+    return listings
+
+
+def iter_scrape_phases(max_pages: int = MAX_PAGES, progress_callback=None, cancel_event=None,
+                       known_ad_ids=None):
+    """Yield (phase, listings) one phase at a time: rent, then sale, then land.
+
+    Detail URLs are classified by their slug so each phase only fetches its own
+    detail pages; the orchestrator flushes each phase to the DB and frees the
+    memory before the next one starts. Ads already in the DB (known_ad_ids) are
+    not re-downloaded.
+    """
+    all_links = _collect_links(max_pages, progress_callback, cancel_event)
+
+    groups = {"rent": [], "sale": [], "land": []}
+    for link in sorted(all_links):
+        groups[_classify_link(link)].append(link)
+    del all_links
+
+    for phase in ("rent", "sale", "land"):
+        listings = _scrape_details(phase, groups[phase], progress_callback, cancel_event, known_ad_ids)
+        print(f"DEBUG: Expat {phase} phase: {len(listings)} listings.")
+        yield phase, listings
+
+
+def scrape_expat(max_pages: int = MAX_PAGES, progress_callback=None, cancel_event=None,
+                 known_ad_ids=None) -> list:
+    """Backward-compatible wrapper: run all phases and return one flat list."""
+    listings = []
+    for _phase, items in iter_scrape_phases(max_pages, progress_callback, cancel_event, known_ad_ids):
+        listings.extend(items)
     print(f"DEBUG: Extracted {len(listings)} unique real estate listings from Expat.")
     return listings

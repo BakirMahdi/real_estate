@@ -6,16 +6,23 @@ import requests
 from bs4 import BeautifulSoup
 from requests import RequestException
 
+from ..cancellation import raise_if_cancelled
+from ..http_client import get_session
+
+import os
+
 BASE_URL = "https://www.mubawab.tn"
 SOURCE = "mubawab"
-MAX_PAGES = 10000  # Scrape all pages (very high limit)
-DETAIL_WORKERS = 8
+MAX_PAGES = 500  # Safety cap; real pagination stops as soon as a batch is empty
+PAGE_BATCH_SIZE = int(os.getenv("SCRAPER_PAGE_BATCH_SIZE", "8"))  # Concurrent page fetches per batch
+DETAIL_WORKERS = int(os.getenv("SCRAPER_DETAIL_WORKERS", "10"))  # Concurrent detail-page fetches
 
-LISTING_CATEGORIES = (
-    ("sale", "https://www.mubawab.tn/fr/ct/tunis/immobilier-a-vendre"),
-    ("rent", "https://www.mubawab.tn/fr/ct/tunis/immobilier-a-louer"),
-    ("sale", "https://www.mubawab.tn/fr/sc/terrains-a-vendre"),
-)
+# Phase order: rent (non-land) first, then sale (non-land), then land (rent+sale)
+RENT_CATEGORY = ("rent", "https://www.mubawab.tn/fr/ct/tunis/immobilier-a-louer")
+SALE_CATEGORY = ("sale", "https://www.mubawab.tn/fr/ct/tunis/immobilier-a-vendre")
+LAND_CATEGORY = ("sale", "https://www.mubawab.tn/fr/sc/terrains-a-vendre")
+
+LISTING_CATEGORIES = (SALE_CATEGORY, RENT_CATEGORY, LAND_CATEGORY)
 
 RENT_KEYWORDS = (
     "à louer",
@@ -250,13 +257,14 @@ def scrape_detail_page(url, ad_id):
     ad_path = _build_ad_image_path(ad_id)
 
     try:
-        response = requests.get(url, headers=_HEADERS, timeout=20)
+        response = get_session().get(url, headers=_HEADERS, timeout=20)
         response.raise_for_status()
         response.encoding = response.apparent_encoding or response.encoding
         soup = BeautifulSoup(response.text, "html.parser")
 
         images = dedupe_images(_collect_image_sources(soup, ad_path))
         description = extract_full_description(soup)
+        soup.decompose()  # free the parsed document now, not at the next GC pass
         return images, description
     except Exception as e:
         print(f"DEBUG: Failed to scrape Mubawab detail page {url}: {e}")
@@ -334,85 +342,160 @@ def enrich_from_detail(data):
 
 
 def _fetch_page(listing_type, base_url, page_number):
-    """Fetch a single Mubawab listing page and return parsed cards."""
+    """Fetch a single Mubawab listing page and return extracted listing dicts.
+
+    The cards are turned into plain dicts here, before the DOM is freed, on
+    purpose: a BeautifulSoup Tag keeps a reference to the whole parsed page, so
+    returning Tags and accumulating them across hundreds of pages pins every
+    page's full document in RAM at once — which grew the memory footprint page
+    by page until the process ran out of memory and crashed.
+    """
     page_url = build_page_url(base_url, page_number)
     print(f"DEBUG: Connecting to Mubawab {listing_type} page {page_number}: {page_url}")
     try:
-        response = requests.get(page_url, headers=_HEADERS, timeout=20)
+        response = get_session().get(page_url, headers=_HEADERS, timeout=20)
         response.raise_for_status()
         response.encoding = response.apparent_encoding or response.encoding
         soup = BeautifulSoup(response.text, "html.parser")
         cards = soup.select("div.listingBox[linkRef]")
-        print(f"DEBUG: Found {len(cards)} raw Mubawab listings on page {page_number}.")
-        return page_number, cards
+        listings = [extract_listing(card, default_listing_type=listing_type) for card in cards]
+        print(f"DEBUG: Found {len(listings)} raw Mubawab listings on page {page_number}.")
+        soup.decompose()  # release the parsed document immediately
+        return page_number, listings
     except RequestException as e:
         print(f"DEBUG: Mubawab page {page_number} request failed: {e}")
         return page_number, []
 
 
-def scrape_category(listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES, progress_callback=None):
-    results = []
-
-    # Fetch all listing pages concurrently
-    all_cards_by_page = {}
+def _collect_candidates(phase, listing_type, base_url, seen_ad_ids, max_pages=MAX_PAGES,
+                        progress_callback=None, cancel_event=None):
+    """Fetch listing pages and return raw (un-enriched) candidate dicts."""
+    # Fetch listing pages in small concurrent batches, stopping as soon as a
+    # batch comes back empty (i.e. we've gone past the last real page).
+    # Firing all max_pages requests at once used to trigger the site's
+    # rate limiting, which then stalled the whole scrape with timeouts.
+    all_listings_by_page = {}
     pages_completed = 0
-    total_pages = max_pages
-    
-    with ThreadPoolExecutor(max_workers=max_pages) as executor:
-        futures = {
-            executor.submit(_fetch_page, listing_type, base_url, p): p
-            for p in range(1, max_pages + 1)
-        }
-        for future in as_completed(futures):
-            page_number, cards = future.result()
-            all_cards_by_page[page_number] = cards
-            pages_completed += 1
-            
-            # Update progress callback
-            if progress_callback:
-                items_found = sum(len(c) for c in all_cards_by_page.values())
-                progress_callback(pages_completed, total_pages, items_found)
+    page = 1
+
+    while page <= max_pages:
+        raise_if_cancelled(cancel_event)
+        batch = list(range(page, min(page + PAGE_BATCH_SIZE, max_pages + 1)))
+        with ThreadPoolExecutor(max_workers=len(batch)) as executor:
+            futures = {
+                executor.submit(_fetch_page, listing_type, base_url, p): p
+                for p in batch
+            }
+            batch_cards_found = 0
+            for future in as_completed(futures):
+                raise_if_cancelled(cancel_event, executor)
+                page_number, listings = future.result()
+                all_listings_by_page[page_number] = listings
+                batch_cards_found += len(listings)
+                pages_completed += 1
+
+                if progress_callback:
+                    items_found = sum(len(c) for c in all_listings_by_page.values())
+                    progress_callback(phase, "listing", pages_completed, 0, items_found)
+
+        if batch_cards_found == 0:
+            break
+        page += PAGE_BATCH_SIZE
 
     # Collect candidates in page order
     candidates = []
-    for page_number in range(1, max_pages + 1):
-        for card in all_cards_by_page.get(page_number, []):
-            data = extract_listing(card, default_listing_type=listing_type)
+    for page_number in sorted(all_listings_by_page):
+        for data in all_listings_by_page[page_number]:
             if not data["ad_id"] or data["ad_id"] in seen_ad_ids:
                 continue
             seen_ad_ids.add(data["ad_id"])
             candidates.append(data)
 
-    # Enrich all candidates concurrently
+    return candidates
+
+
+def _enrich_candidates(phase, candidates, progress_callback=None, cancel_event=None):
+    """Fetch detail pages only for candidates missing images/description.
+
+    Same system as the Tayara scraper: a card that already has enough images
+    and a long-enough description is kept as-is, skipping its detail-page
+    request entirely — most of the enrichment time used to be spent
+    re-fetching data the listing cards already contained.
+    """
+    needs_enrichment = [
+        d for d in candidates
+        if len(d.get("images") or []) < 2 or len(d.get("description") or "") < 300
+    ]
+    total_to_enrich = len(needs_enrichment)
     enriched_map = {}
-    if candidates:
+    if needs_enrichment:
         with ThreadPoolExecutor(max_workers=DETAIL_WORKERS) as executor:
-            futures = {executor.submit(enrich_from_detail, d): d["ad_id"] for d in candidates}
+            futures = {executor.submit(enrich_from_detail, d): d["ad_id"] for d in needs_enrichment}
+            enriched_count = 0
             for future in as_completed(futures):
+                raise_if_cancelled(cancel_event, executor)
                 result = future.result()
                 enriched_map[result["ad_id"]] = result
+                enriched_count += 1
+                if progress_callback:
+                    progress_callback(phase, "enriching", enriched_count, total_to_enrich, len(candidates))
 
-    for data in candidates:
-        results.append(enriched_map.get(data["ad_id"], data))
-
-    print(f"DEBUG: Extracted {len(results)} listings from Mubawab ({listing_type}).")
-    return results
+    return [enriched_map.get(d["ad_id"], d) for d in candidates]
 
 
-def scrape_mubawab(max_pages=MAX_PAGES, progress_callback=None):
-    results = []
+def _split_known(candidates, known_ad_ids):
+    """Split candidates into already-in-DB markers and to-be-enriched new ones."""
+    known = [
+        {"source": SOURCE, "ad_id": d["ad_id"], "_known": True}
+        for d in candidates if d["ad_id"] in known_ad_ids
+    ]
+    new = [d for d in candidates if d["ad_id"] not in known_ad_ids]
+    return known, new
+
+
+def iter_scrape_phases(max_pages=MAX_PAGES, progress_callback=None, cancel_event=None,
+                       known_ad_ids=None):
+    """Yield (phase, listings) one phase at a time: rent, then sale, then land.
+
+    Rent/sale phases contain only non-land properties; land listings found in
+    those categories are held back and combined with the dedicated
+    terrains-a-vendre category in the final land phase, so the orchestrator can
+    flush each phase to the DB and free the memory before the next one starts.
+    Ads already in the DB (known_ad_ids) skip enrichment entirely.
+    """
+    known_ad_ids = known_ad_ids or set()
     seen_ad_ids = set()
+    held_land = []
 
-    for listing_type, base_url in LISTING_CATEGORIES:
-        category_results = scrape_category(
-            listing_type,
-            base_url,
-            seen_ad_ids,
-            max_pages=max_pages,
-            progress_callback=progress_callback,
+    for phase, (listing_type, base_url) in (("rent", RENT_CATEGORY), ("sale", SALE_CATEGORY)):
+        candidates = _collect_candidates(
+            phase, listing_type, base_url, seen_ad_ids,
+            max_pages=max_pages, progress_callback=progress_callback, cancel_event=cancel_event,
         )
-        results.extend(category_results)
-        print(f"DEBUG: Extracted {len(category_results)} new {listing_type} listings from Mubawab.")
+        non_land = [d for d in candidates if d["type"] != "land"]
+        held_land.extend(d for d in candidates if d["type"] == "land")
+        known, new = _split_known(non_land, known_ad_ids)
+        listings = known + _enrich_candidates(phase, new, progress_callback, cancel_event)
+        print(f"DEBUG: Mubawab {phase} phase: {len(listings)} listings ({len(known)} known).")
+        yield phase, listings
 
+    # Land phase: the dedicated terrains category plus lands held back above
+    land_type, land_url = LAND_CATEGORY
+    land_candidates = _collect_candidates(
+        "land", land_type, land_url, seen_ad_ids,
+        max_pages=max_pages, progress_callback=progress_callback, cancel_event=cancel_event,
+    )
+    held_land.extend(land_candidates)
+    known, new = _split_known(held_land, known_ad_ids)
+    land_listings = known + _enrich_candidates("land", new, progress_callback, cancel_event)
+    print(f"DEBUG: Mubawab land phase: {len(land_listings)} listings ({len(known)} known).")
+    yield "land", land_listings
+
+
+def scrape_mubawab(max_pages=MAX_PAGES, progress_callback=None, cancel_event=None, known_ad_ids=None):
+    """Backward-compatible wrapper: run all phases and return one flat list."""
+    results = []
+    for _phase, items in iter_scrape_phases(max_pages, progress_callback, cancel_event, known_ad_ids):
+        results.extend(items)
     print(f"DEBUG: Extracted {len(results)} unique listings from Mubawab.")
     return results

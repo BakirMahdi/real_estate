@@ -10,6 +10,7 @@ export interface Property {
   area: number | null;
   city: string | null;
   address: string | null;
+  governorate?: string | null;
   url: string;
   bedrooms?: number | null;
   garage?: boolean | null;
@@ -26,6 +27,14 @@ export interface PropertyListResponse {
   items: Property[];
 }
 
+export interface ScrapePhaseStats {
+  status: string;
+  count: number;
+  inserted: number;
+  skipped: number;
+  errors: number;
+}
+
 export interface ScrapeResult {
   source: string;
   count?: number;
@@ -35,6 +44,23 @@ export interface ScrapeResult {
   archived?: number;
   error?: string;
   message?: string | null;
+  phases?: Record<string, ScrapePhaseStats>;
+}
+
+export interface ScrapeSourceProgress {
+  status: string;
+  phase: string | null;
+  step: string | null;
+  pages_processed: number;
+  total_pages: number;
+  items_found: number;
+  phases: Record<string, ScrapePhaseStats>;
+}
+
+export interface ScrapeProgress {
+  total_sources: number;
+  completed_sources: number;
+  sources: Record<string, ScrapeSourceProgress>;
 }
 
 export interface SearchFilters {
@@ -55,4 +81,13 @@ export interface SearchFilters {
 export interface HealthStatus {
   status: string;
   database?: string;
+}
+
+export interface ArchiveSearchFilters {
+  ad_id?: string;
+  name?: string;
+  location?: string;
+  min_price?: number;
+  max_price?: number;
+  source?: string;
 }

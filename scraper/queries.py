@@ -17,6 +17,7 @@ _PROPERTY_COLUMNS = """
     area,
     city,
     address,
+    governorate,
     url,
     bedrooms,
     garage,
@@ -65,7 +66,8 @@ def get_properties(
         sql += " AND archived = FALSE"
 
     if city:
-        sql += " AND LOWER(city) = LOWER(%s)"
+        # The "Ville" filter selects a governorate (see frontend dropdown).
+        sql += " AND LOWER(governorate) = LOWER(%s)"
         params.append(city)
     if property_type:
         sql += " AND property_type = %s"
@@ -154,6 +156,7 @@ def get_all_properties(include_archived=False):
                 area,
                 city,
                 address,
+                governorate,
                 url,
                 subcategory,
                 images,
@@ -177,6 +180,7 @@ def get_all_properties(include_archived=False):
                 area,
                 city,
                 address,
+                governorate,
                 url,
                 subcategory,
                 images,
@@ -196,56 +200,122 @@ def get_all_properties(include_archived=False):
 
 
 def search_properties_by_id(search_id, include_archived=False):
-    """Search for properties by ID (exact match) or ad_id (exact match). Admin only."""
+    """Search properties for the admin archiving section.
+
+    Matches on exact id/ad_id as well as a free-text match on the title,
+    city and address (like the public catalog search) so a single search
+    box covers both ID lookups and name/location lookups.
+    """
     conn = get_conn()
     cur = conn.cursor()
-    
-    # Try to convert to integer for exact ID match
+
+    search_id = (search_id or "").strip()
+
+    conditions = ["ad_id = %s", "title ILIKE %s", "city ILIKE %s", "address ILIKE %s"]
+    like_param = f"%{search_id}%"
+    params = [search_id, like_param, like_param, like_param]
+
+    # If the input is a whole number, also match the numeric primary key exactly.
     try:
-        search_id_int = int(search_id)
-        if include_archived:
-            cur.execute(
-                f"""
-                SELECT {_PROPERTY_COLUMNS}
-                FROM properties
-                WHERE id = %s OR ad_id = %s
-                ORDER BY id DESC
-                """,
-                (search_id_int, search_id)
-            )
-        else:
-            cur.execute(
-                f"""
-                SELECT {_PROPERTY_COLUMNS}
-                FROM properties
-                WHERE (id = %s OR ad_id = %s) AND archived = FALSE
-                ORDER BY id DESC
-                """,
-                (search_id_int, search_id)
-            )
+        params.insert(0, int(search_id))
+        conditions.insert(0, "id = %s")
     except ValueError:
-        # Not an integer, search by ad_id only with exact match
-        if include_archived:
-            cur.execute(
-                f"""
-                SELECT {_PROPERTY_COLUMNS}
-                FROM properties
-                WHERE ad_id = %s
-                ORDER BY id DESC
-                """,
-                (search_id,)
-            )
-        else:
-            cur.execute(
-                f"""
-                SELECT {_PROPERTY_COLUMNS}
-                FROM properties
-                WHERE ad_id = %s AND archived = FALSE
-                ORDER BY id DESC
-                """,
-                (search_id,)
-            )
-    
+        pass
+
+    where = "(" + " OR ".join(conditions) + ")"
+    if not include_archived:
+        where += " AND archived = FALSE"
+
+    cur.execute(
+        f"""
+        SELECT {_PROPERTY_COLUMNS}
+        FROM properties
+        WHERE {where}
+        ORDER BY id DESC
+        """,
+        tuple(params),
+    )
+
+    rows = cur.fetchall()
+    properties = [_row_to_dict(cur, row) for row in rows]
+
+    cur.close()
+    conn.close()
+    return properties
+
+
+def search_properties_admin(
+    ad_id=None,
+    name=None,
+    location=None,
+    min_price=None,
+    max_price=None,
+    source=None,
+    limit=200,
+):
+    """Filtered search for the admin archiving section.
+
+    Every provided filter is combined with AND:
+      - ad_id: exact match on the numeric id or the source ad_id
+      - name: substring match on the title
+      - location: substring match on the city or address
+      - min_price / max_price: price range
+      - source: exact source website
+    Archived and non-archived ads are both returned so the admin can toggle
+    either way.
+    """
+    conn = get_conn()
+    cur = conn.cursor()
+
+    conditions = []
+    params = []
+
+    if ad_id and str(ad_id).strip():
+        term = str(ad_id).strip()
+        sub = ["ad_id = %s"]
+        sub_params = [term]
+        try:
+            sub.insert(0, "id = %s")
+            sub_params.insert(0, int(term))
+        except ValueError:
+            pass
+        conditions.append("(" + " OR ".join(sub) + ")")
+        params.extend(sub_params)
+
+    if name and name.strip():
+        conditions.append("title ILIKE %s")
+        params.append(f"%{name.strip()}%")
+
+    if location and location.strip():
+        conditions.append("(city ILIKE %s OR address ILIKE %s)")
+        loc = f"%{location.strip()}%"
+        params.extend([loc, loc])
+
+    if min_price is not None:
+        conditions.append("price >= %s")
+        params.append(min_price)
+
+    if max_price is not None:
+        conditions.append("price <= %s")
+        params.append(max_price)
+
+    if source and source.strip():
+        conditions.append("source = %s")
+        params.append(source.strip())
+
+    where = " AND ".join(conditions) if conditions else "TRUE"
+
+    cur.execute(
+        f"""
+        SELECT {_PROPERTY_COLUMNS}
+        FROM properties
+        WHERE {where}
+        ORDER BY id DESC
+        LIMIT %s
+        """,
+        (*params, limit),
+    )
+
     rows = cur.fetchall()
     properties = [_row_to_dict(cur, row) for row in rows]
 

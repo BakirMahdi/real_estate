@@ -54,7 +54,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
       </div>
 
       {/* Filters Grid */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label className="mb-1.5 block text-xs font-medium text-slate-500">Gouvernorat</label>
           <select
@@ -76,7 +76,19 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
           <select
             className="input-field w-full"
             value={filters.subcategory ?? ""}
-            onChange={(e) => set("subcategory", e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              onChange({
+                ...filters,
+                subcategory: value === "" ? undefined : value,
+                // The bedrooms filter is only shown for a specific category
+                // that has bedrooms (not "Toutes", not "Terrain"), so drop
+                // any stale value rather than leaving it silently applied
+                // while hidden.
+                bedrooms: value && value !== "land" ? filters.bedrooms : undefined,
+                offset: 0,
+              });
+            }}
           >
             <option value="">Toutes</option>
             <option value="apartment">Appartement</option>
@@ -147,6 +159,20 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
             onChange={(e) => set("max_area", e.target.value ? Number(e.target.value) : undefined)}
           />
         </div>
+
+        {filters.subcategory && filters.subcategory !== "land" && (
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Chambres (min)</label>
+            <input
+              type="number"
+              className="input-field w-full"
+              placeholder="Min"
+              min={0}
+              value={filters.bedrooms ?? ""}
+              onChange={(e) => set("bedrooms", e.target.value ? Number(e.target.value) : undefined)}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

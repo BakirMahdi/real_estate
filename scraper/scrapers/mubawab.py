@@ -32,6 +32,10 @@ RENT_KEYWORDS = (
     "locatio",
     "nuitée",
     "nuité",
+    "كراء",
+    "للكراء",
+    "إيجار",
+    "ايجار",
 )
 
 SALE_KEYWORDS = (
@@ -39,6 +43,7 @@ SALE_KEYWORDS = (
     "a vendre",
     "vendre",
     "vente",
+    "للبيع",
 )
 
 FEATURE_KEYWORDS = {
@@ -55,6 +60,14 @@ _HEADERS = {
 
 def clean_text(value):
     return " ".join(str(value or "").split())
+
+
+def _is_truncated(description):
+    """Card-listing descriptions are often cut off mid-sentence with a
+    trailing "..."/"…", even well past the 300-char "good enough" length
+    threshold (e.g. "Prix : 340 000..."). Length alone can't catch this, so
+    it forces a detail-page fetch for the real, complete description."""
+    return str(description or "").rstrip().endswith(("...", "…"))
 
 
 def parse_number(value):
@@ -145,9 +158,9 @@ def extract_features(card):
         if value is None:
             continue
 
-        if re.search(r"\d+\s*m", text):
+        if re.search(r"\d+\s*m", text) and 1 <= value <= 1_000_000:
             area = value
-        elif "chambre" in text:
+        elif "chambre" in text and 0 <= value <= 20:
             bedrooms = value
 
     return area, bedrooms
@@ -287,6 +300,14 @@ def extract_listing(card, default_listing_type="sale"):
     subcategory = determine_subcategory(title, card_description, url, property_type)
     ad_id = extract_ad_id(url)
 
+    # Land ads found in the general rent/sale categories are held back and
+    # merged into the dedicated land phase regardless of which category page
+    # they were first seen on, so that crawl phase is not a reliable
+    # rent/sale signal for them (unlike house/apartment ads, where the
+    # category page split is accurate). Default to "sale" instead when no
+    # explicit keyword settles it.
+    listing_type_default = "sale" if property_type == "land" else default_listing_type
+
     card_images = []
     for img in card.select("img"):
         img_url = img.get("data-url") or img.get("src") or img.get("data-src")
@@ -297,7 +318,7 @@ def extract_listing(card, default_listing_type="sale"):
         "source": SOURCE,
         "ad_id": ad_id,
         "type": property_type,
-        "listing_type": determine_listing_type(title, card_description, url, default_listing_type),
+        "listing_type": determine_listing_type(title, card_description, url, listing_type_default),
         "title": title or "Sans titre",
         "description": card_description,
         "price": price,
@@ -424,7 +445,9 @@ def _enrich_candidates(phase, candidates, progress_callback=None, cancel_event=N
     """
     needs_enrichment = [
         d for d in candidates
-        if len(d.get("images") or []) < 2 or len(d.get("description") or "") < 300
+        if len(d.get("images") or []) < 2
+        or len(d.get("description") or "") < 300
+        or _is_truncated(d.get("description"))
     ]
     total_to_enrich = len(needs_enrichment)
     enriched_map = {}

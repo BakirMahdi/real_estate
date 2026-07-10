@@ -130,8 +130,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ username, password }),
     }),
-  adminSearch: (searchId: string, includeArchived: boolean = false) =>
-    request<{ count: number; items: Property[] }>(`/admin/search?search_id=${searchId}&include_archived=${includeArchived}`),
   adminArchiveSearch: (params: ArchiveSearchParams) => {
     const query = buildQuery({
       search: params.search,
@@ -140,6 +138,14 @@ export const api = {
       limit: params.limit,
       sort_by: params.sortBy,
       sort_dir: params.sortDir,
+      city: params.city,
+      subcategory: params.subcategory,
+      listing_type: params.listingType,
+      min_price: params.minPrice,
+      max_price: params.maxPrice,
+      min_area: params.minArea,
+      max_area: params.maxArea,
+      bedrooms: params.bedrooms,
     });
     return request<{ total: number; total_filtered: number; items: Property[] }>(
       `/admin/archive-search${query}`,

@@ -59,19 +59,17 @@ class ScrapeLogger:
                 "totals": {
                     **_blank_stats(),
                     "archived": 0,
-                    "rolled_back": 0,
                 },
             }
             self._flush()
 
-    def end_run(self, status, rolled_back=0):
+    def end_run(self, status):
         with self._lock:
             if self.data is None:
                 return
             self.data["status"] = status
             self.data["finished_at"] = _now_iso()
             self.data["duration_seconds"] = round(time.time() - self._run_t0, 2)
-            self.data["totals"]["rolled_back"] = rolled_back
             if status == "cancelled":
                 # Mark anything still running as cancelled
                 for site in self.data["websites"].values():

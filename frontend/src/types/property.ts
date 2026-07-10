@@ -45,6 +45,7 @@ export interface ScrapeResult {
   error?: string;
   message?: string | null;
   phases?: Record<string, ScrapePhaseStats>;
+  cancelled?: boolean;
 }
 
 export interface ScrapeSourceProgress {
@@ -90,4 +91,12 @@ export interface ArchiveSearchParams {
   limit?: number;
   sortBy?: string;
   sortDir?: "asc" | "desc";
+  city?: string;
+  subcategory?: string;
+  listingType?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minArea?: number;
+  maxArea?: number;
+  bedrooms?: number;
 }

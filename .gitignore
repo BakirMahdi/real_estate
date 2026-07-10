@@ -16,3 +16,4 @@ frontend/certs/*.crt
 *.tsbuildinfo
 tayara_debug.html
 mubawab_debug.html
+db/backups/

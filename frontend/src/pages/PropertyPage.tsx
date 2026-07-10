@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   BedDouble,
   Building,
+  Calculator,
   Car,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +18,7 @@ import {
   Waves,
 } from "lucide-react";
 import { api } from "../api/client";
+import { CreditSimulatorModal } from "../components/CreditSimulatorModal";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import type { Property } from "../types/property";
 import {
@@ -58,6 +60,7 @@ export function PropertyPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [showCreditSimulator, setShowCreditSimulator] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -296,9 +299,26 @@ export function PropertyPage() {
               Voir sur {sourceLabel(property.source)}
               <ArrowUpRight className="h-4 w-4" />
             </a>
+            {property.listing_type === "sale" && (
+              <button
+                type="button"
+                onClick={() => setShowCreditSimulator(true)}
+                className="btn-secondary"
+              >
+                <Calculator className="h-4 w-4" />
+                Simuler un crédit
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {showCreditSimulator && property.listing_type === "sale" && (
+        <CreditSimulatorModal
+          property={property}
+          onClose={() => setShowCreditSimulator(false)}
+        />
+      )}
     </div>
   );
 }

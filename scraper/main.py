@@ -6,8 +6,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .scrapers import tayara as tayara_scraper
 from .scrapers import mubawab as mubawab_scraper
 from .scrapers import expat as expat_scraper
-from .insert import bulk_insert_properties, bulk_get_latest_properties, is_same_property, delete_properties_by_ids, get_active_ad_ids
-from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_by_id, search_properties_admin, archive_property, unarchive_property
+from .insert import bulk_insert_properties, bulk_get_latest_properties, is_same_property, get_active_ad_ids
+from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_admin, archive_property, unarchive_property
 from .db import get_conn
 from .cancellation import ScrapeCancelled
 from .scrape_log import ScrapeLogger
@@ -405,8 +405,6 @@ def _run_site(source_name, iter_phases):
 
     if site_error:
         result = {"source": source_name, "error": site_error}
-    elif cancelled:
-        result = None  # partial numbers get rolled back, so don't report them
     else:
         result = {
             "source": source_name,
@@ -414,11 +412,15 @@ def _run_site(source_name, iter_phases):
             "archived": 0,
             "phases": {phase: dict(src_progress["phases"][phase]) for phase in SCRAPE_PHASES},
             "message": (
-                "skipped = annonces déjà présentes en base (doublons source+ad_id)"
+                "Scrape arrêté — annonces déjà insérées avant l'arrêt conservées en base."
+                if cancelled
+                else "skipped = annonces déjà présentes en base (doublons source+ad_id)"
                 if site_totals["skipped"]
                 else None
             ),
         }
+        if cancelled:
+            result["cancelled"] = True
 
     return result, inserted_ids, found
 
@@ -512,15 +514,26 @@ def _run_scrape_task(triggered_by="manual"):
             scrape_status_state["results"] = results
 
         except ScrapeCancelled:
-            # Undo every DB modification made during this run
-            deleted = 0
-            try:
-                deleted = delete_properties_by_ids(inserted_row_ids)
-            except Exception as e:
-                print(f"ERROR rolling back cancelled scrape: {e}")
-            scrape_logger.end_run("cancelled", rolled_back=deleted)
+            # Stop immediately, but keep everything already committed by
+            # completed phases/sites during this run -- no rollback. Skip
+            # archiving here: a site interrupted mid-crawl only found a
+            # subset of its ads, so treating "not found this run" as
+            # "delisted" would incorrectly archive ads that just weren't
+            # reached yet.
+            source_rows = [r for r in results if "error" not in r]
+            if source_rows:
+                results.append({
+                    "source": "total",
+                    "count": sum(r.get("count", 0) for r in source_rows),
+                    "inserted": sum(r.get("inserted", 0) for r in source_rows),
+                    "skipped": sum(r.get("skipped", 0) for r in source_rows),
+                    "errors": sum(r.get("errors", 0) for r in source_rows),
+                    "archived": 0,
+                })
+            scrape_status_state["results"] = results
+            scrape_logger.end_run("cancelled")
             scrape_status_state["cancelled"] = True
-            print(f"[Scrape] Cancelled: rolled back {deleted} inserted rows.")
+            print(f"[Scrape] Stopped by user request; {len(inserted_row_ids)} already-inserted rows were kept.")
 
     except Exception as e:
         scrape_status_state["error"] = str(e)
@@ -545,7 +558,7 @@ def start_scrape(background_tasks: BackgroundTasks):
 
 @app.post("/scrape/cancel")
 def cancel_scrape():
-    """Cancel the running scrape; all its DB modifications are rolled back."""
+    """Stop the running scrape immediately; rows already inserted are kept."""
     if not scrape_status_state["is_scraping"]:
         return {"status": "not_running"}
 
@@ -669,17 +682,6 @@ def get_current_user_role(request: Request):
     return payload.get("role")
 
 
-@app.get("/admin/search")
-def admin_search(search_id: str, include_archived: bool = False, request: Request = None):
-    """Search for properties by ID or ad_id. Admin only."""
-    role = get_current_user_role(request)
-    if role != "admin":
-        raise HTTPException(status_code=403, detail="Admin access required")
-    
-    properties = search_properties_by_id(search_id, include_archived=include_archived)
-    return {"count": len(properties), "items": properties}
-
-
 @app.get("/admin/archive-search")
 def admin_archive_search(
     search: str | None = Query(default=None),
@@ -688,6 +690,14 @@ def admin_archive_search(
     limit: int = Query(default=25, ge=1, le=200),
     sort_by: str = Query(default="id"),
     sort_dir: str = Query(default="desc"),
+    city: str | None = Query(default=None),
+    subcategory: str | None = Query(default=None),
+    listing_type: str | None = Query(default=None),
+    min_price: float | None = Query(default=None),
+    max_price: float | None = Query(default=None),
+    min_area: int | None = Query(default=None),
+    max_area: int | None = Query(default=None),
+    bedrooms: int | None = Query(default=None),
     request: Request = None,
 ):
     """Server-side paginated search for the archiving section's DataTable.
@@ -704,6 +714,14 @@ def admin_archive_search(
         limit=limit,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        city=city,
+        subcategory=subcategory,
+        listing_type=listing_type,
+        min_price=min_price,
+        max_price=max_price,
+        min_area=min_area,
+        max_area=max_area,
+        bedrooms=bedrooms,
     )
 
 

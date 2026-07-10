@@ -15,6 +15,7 @@ import {
   Loader2,
   Search,
   Server,
+  X,
   XCircle,
   Lock,
   Users,
@@ -30,9 +31,13 @@ import {
   logout,
 } from "../api/client";
 import {
+  formatArea,
   formatPrice,
+  GOVERNORATE_NAMES,
   governorateOf,
+  listingTypeLabel,
   sourceLabel,
+  subcategoryLabel,
   truncate,
 } from "../lib/format";
 import type {
@@ -48,7 +53,11 @@ interface ArchiveRow {
   id: number;
   title: string;
   location: string;
+  categoryLabel: string;
+  transactionLabel: string;
   priceLabel: string;
+  areaLabel: string;
+  bedroomsLabel: string;
   sourceLabel: string;
   archived: boolean;
   property: Property;
@@ -59,22 +68,41 @@ function toArchiveRow(property: Property): ArchiveRow {
     id: property.id,
     title: truncate(property.title, 60),
     location: governorateOf(property),
+    categoryLabel: subcategoryLabel(property.subcategory, property.property_type),
+    transactionLabel: listingTypeLabel(property.listing_type),
     priceLabel: formatPrice(property.price),
+    areaLabel: formatArea(property.area),
+    bedroomsLabel: property.bedrooms != null ? String(property.bedrooms) : "—",
     sourceLabel: sourceLabel(property.source),
     archived: Boolean(property.archived),
     property,
   };
 }
 
-// Maps archiveColumns[i].data to the backend's sort_by key (column 5, the
-// archive toggle, is intentionally not orderable and has no entry).
+// Maps archiveColumns[i].data to the backend's sort_by key (the archive
+// toggle column is intentionally not orderable and has no entry).
 const ARCHIVE_SORT_KEYS: Record<string, string> = {
   id: "id",
   title: "title",
   location: "location",
+  categoryLabel: "subcategory",
+  transactionLabel: "listing_type",
   priceLabel: "price",
+  areaLabel: "area",
+  bedroomsLabel: "bedrooms",
   sourceLabel: "source",
 };
+
+interface ArchiveFilters {
+  city?: string;
+  subcategory?: string;
+  listingType?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minArea?: number;
+  maxArea?: number;
+  bedrooms?: number;
+}
 
 interface ArchiveTableState {
   search: string;
@@ -83,6 +111,7 @@ interface ArchiveTableState {
   length: number;
   orderCol: number;
   orderDir: "asc" | "desc";
+  filters?: ArchiveFilters;
 }
 
 // Persists the archive table's search/filter/paging/sort state across
@@ -204,10 +233,14 @@ export function DashboardPage() {
   const [archiveSearchTerm, setArchiveSearchTerm] = useState(
     () => restoredArchiveState?.search ?? "",
   );
+  const [archiveFilters, setArchiveFiltersState] = useState<ArchiveFilters>(
+    () => restoredArchiveState?.filters ?? {},
+  );
   const scrapingRef = useRef(false);
   const showArchivedOnlyRef = useRef(
     restoredArchiveState?.archivedOnly ?? false,
   );
+  const archiveFiltersRef = useRef<ArchiveFilters>(archiveFilters);
   const archiveSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
@@ -427,6 +460,14 @@ export function DashboardPage() {
     archiveTableRef.current?.dt()?.ajax.reload();
   };
 
+  const setArchiveFilters = (next: ArchiveFilters) => {
+    archiveFiltersRef.current = next;
+    setArchiveFiltersState(next);
+    archiveTableRef.current?.dt()?.draw();
+  };
+
+  const resetArchiveFilters = () => setArchiveFilters({});
+
   const toggleArchive = async (property: Property) => {
     try {
       if (property.archived) {
@@ -450,10 +491,16 @@ export function DashboardPage() {
   };
 
   const archiveColumns: Config["columns"] = [
-    { data: "id", title: "ID", className: "font-mono text-slate-500" },
+    // Kept but hidden (not a visible column) so the default "newest first"
+    // sort still works without exposing the raw id to the admin.
+    { data: "id", title: "ID", visible: false },
     { data: "title", title: "Nom", className: "font-medium text-slate-900" },
     { data: "location", title: "Localisation" },
+    { data: "categoryLabel", title: "Catégorie" },
+    { data: "transactionLabel", title: "Transaction" },
     { data: "priceLabel", title: "Prix" },
+    { data: "areaLabel", title: "Surface" },
+    { data: "bedroomsLabel", title: "Chambres" },
     { data: "sourceLabel", title: "Source" },
     {
       data: "archived",
@@ -478,6 +525,7 @@ export function DashboardPage() {
           limit: data.length,
           sortBy: columnKey ? ARCHIVE_SORT_KEYS[columnKey] : undefined,
           sortDir: orderSpec?.dir === "asc" ? "asc" : "desc",
+          ...archiveFiltersRef.current,
         })
         .then((res) => {
           callback({
@@ -516,6 +564,7 @@ export function DashboardPage() {
       length: pageInfo.length,
       orderCol: orderSpec ? orderSpec[0] : 0,
       orderDir: orderSpec?.[1] === "asc" ? "asc" : "desc",
+      filters: archiveFiltersRef.current,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -631,7 +680,7 @@ export function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <section className="mb-10 animate-fade-in">
         <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
           <Activity className="h-4 w-4" />
@@ -640,10 +689,6 @@ export function DashboardPage() {
         <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900">
           Dashboard
         </h1>
-        <p className="mt-3 text-slate-500">
-          Surveillez l&apos;état du système et lancez la collecte
-          d&apos;annonces.
-        </p>
       </section>
 
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
@@ -790,25 +835,19 @@ export function DashboardPage() {
         className="glass animate-slide-up mb-8 rounded-2xl p-6 shadow-card"
         style={{ animationDelay: "425ms" }}
       >
-        <div className="mb-2 flex items-center gap-2">
+        <div className="mb-6 flex items-center gap-2">
           <Archive className="h-5 w-5 text-violet-600" />
           <h2 className="font-display text-xl font-semibold text-slate-900">
-            Archivage manuel
+            Gestion des annonces
           </h2>
         </div>
-        <p className="mb-6 text-sm text-slate-500">
-          Recherchez une annonce par ID, nom, localisation ou source, puis
-          activez l&apos;interrupteur à droite de chaque ligne pour
-          l&apos;archiver ou la restaurer. Cliquez sur une ligne pour ouvrir
-          l&apos;annonce.
-        </p>
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Rechercher (ID, nom, localisation, source...)"
+              placeholder="Rechercher (nom, localisation, source...)"
               value={archiveSearchTerm}
               onChange={(e) => handleArchiveSearchChange(e.target.value)}
               className="input-field w-full pl-9"
@@ -845,6 +884,172 @@ export function DashboardPage() {
           </div>
         </div>
 
+        <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Gouvernorat</label>
+            <select
+              className="input-field w-full"
+              value={archiveFilters.city ?? ""}
+              onChange={(e) =>
+                setArchiveFilters({ ...archiveFilters, city: e.target.value || undefined })
+              }
+            >
+              <option value="">Tous</option>
+              {GOVERNORATE_NAMES.map((gov) => (
+                <option key={gov} value={gov}>
+                  {gov}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Catégorie</label>
+            <select
+              className="input-field w-full"
+              value={archiveFilters.subcategory ?? ""}
+              onChange={(e) => {
+                const value = e.target.value;
+                setArchiveFilters({
+                  ...archiveFilters,
+                  subcategory: value || undefined,
+                  // The bedrooms filter is only shown for a specific
+                  // category that has bedrooms (not "Toutes", not
+                  // "Terrain"), so drop any stale value rather than leaving
+                  // it silently applied while hidden.
+                  bedrooms: value && value !== "land" ? archiveFilters.bedrooms : undefined,
+                });
+              }}
+            >
+              <option value="">Toutes</option>
+              <option value="apartment">Appartement</option>
+              <option value="house">Maison / Villa</option>
+              <option value="office">Bureau / Commerce</option>
+              <option value="studio">Studio / Chambre</option>
+              <option value="land">Terrain</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Transaction</label>
+            <select
+              className="input-field w-full"
+              value={archiveFilters.listingType ?? ""}
+              onChange={(e) =>
+                setArchiveFilters({ ...archiveFilters, listingType: e.target.value || undefined })
+              }
+            >
+              <option value="">Toutes</option>
+              <option value="sale">À vendre</option>
+              <option value="rent">À louer</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Prix Min (DT)</label>
+            <input
+              type="number"
+              className="input-field w-full"
+              placeholder="0"
+              min={0}
+              value={archiveFilters.minPrice ?? ""}
+              onChange={(e) =>
+                setArchiveFilters({
+                  ...archiveFilters,
+                  minPrice: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Prix Max (DT)</label>
+            <input
+              type="number"
+              className="input-field w-full"
+              placeholder="∞"
+              min={0}
+              value={archiveFilters.maxPrice ?? ""}
+              onChange={(e) =>
+                setArchiveFilters({
+                  ...archiveFilters,
+                  maxPrice: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">
+              Surface Min (m²)
+            </label>
+            <input
+              type="number"
+              className="input-field w-full"
+              placeholder="Min"
+              min={0}
+              value={archiveFilters.minArea ?? ""}
+              onChange={(e) =>
+                setArchiveFilters({
+                  ...archiveFilters,
+                  minArea: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">
+              Surface Max (m²)
+            </label>
+            <input
+              type="number"
+              className="input-field w-full"
+              placeholder="Max"
+              min={0}
+              value={archiveFilters.maxArea ?? ""}
+              onChange={(e) =>
+                setArchiveFilters({
+                  ...archiveFilters,
+                  maxArea: e.target.value ? Number(e.target.value) : undefined,
+                })
+              }
+            />
+          </div>
+
+          {archiveFilters.subcategory && archiveFilters.subcategory !== "land" && (
+            <div>
+              <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                Chambres (min)
+              </label>
+              <input
+                type="number"
+                className="input-field w-full"
+                placeholder="Min"
+                min={0}
+                value={archiveFilters.bedrooms ?? ""}
+                onChange={(e) =>
+                  setArchiveFilters({
+                    ...archiveFilters,
+                    bedrooms: e.target.value ? Number(e.target.value) : undefined,
+                  })
+                }
+              />
+            </div>
+          )}
+        </div>
+
+        {Object.values(archiveFilters).some((v) => v !== undefined) && (
+          <button
+            type="button"
+            onClick={resetArchiveFilters}
+            className="mb-4 flex items-center gap-1 text-xs text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 px-2.5 py-1.5 rounded-lg"
+          >
+            <X className="h-3.5 w-3.5" />
+            Réinitialiser les filtres
+          </button>
+        )}
+
         <div className="dt-archive overflow-x-auto rounded-xl border border-slate-100">
           <DataTable
             ref={archiveTableRef}
@@ -853,7 +1058,7 @@ export function DashboardPage() {
             onDraw={handleArchiveDraw}
             className="w-full text-left text-sm"
             slots={{
-              5: (_data: unknown, row: ArchiveRow) => (
+              9: (_data: unknown, row: ArchiveRow) => (
                 <div className="flex justify-end">
                   <ArchiveToggle
                     archived={row.archived}
@@ -870,17 +1075,9 @@ export function DashboardPage() {
         className="glass animate-slide-up rounded-2xl p-6 shadow-card"
         style={{ animationDelay: "450ms" }}
       >
-        <h2 className="mb-2 font-display text-xl font-semibold text-slate-900">
+        <h2 className="mb-6 font-display text-xl font-semibold text-slate-900">
           Lancer un scrape
         </h2>
-        <p className="mb-6 text-sm text-slate-500">
-          Chaque site est scrapé en 3 phases : Location, Vente, puis Terrains.
-          La base est mise à jour à la fin de chaque phase et la mémoire est
-          libérée. Les doublons sont ignorés automatiquement via l&apos;ID
-          source. Le détail complet est écrit dans{" "}
-          <span className="font-mono text-slate-700">logs/scrape_log.json</span>
-          .
-        </p>
 
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-b border-slate-100 py-4">
           <div className="flex items-center gap-3">
@@ -934,22 +1131,17 @@ export function DashboardPage() {
               {cancelling ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Annulation en cours…
+                  Arrêt en cours…
                 </>
               ) : (
                 <>
                   <Ban className="h-4 w-4" />
-                  Annuler le scrape
+                  Arrêter le scrape
                 </>
               )}
             </button>
           )}
         </div>
-
-        <p className="mt-3 text-xs text-slate-400">
-          En cas d&apos;annulation (bouton, actualisation ou fermeture de la
-          page), toutes les modifications de ce scrape sont annulées en base.
-        </p>
 
         {scrapeError && (
           <p className="mt-4 text-sm text-red-600">{scrapeError}</p>
@@ -958,8 +1150,8 @@ export function DashboardPage() {
         {scrapeCancelled && !scraping && (
           <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
             <Ban className="h-4 w-4 shrink-0" />
-            Scrape annulé — toutes les modifications apportées à la base pendant
-            ce scrape ont été annulées.
+            Scrape arrêté — les annonces déjà insérées avant l&apos;arrêt ont
+            été conservées en base.
           </div>
         )}
 

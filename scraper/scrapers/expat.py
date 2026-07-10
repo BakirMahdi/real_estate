@@ -62,7 +62,14 @@ def parse_price(price_str: str) -> float:
 
 
 def determine_listing_type_from_url(url: str, title: str, description: str) -> str:
-    """Determine if this is a sale or rent listing from the URL first, then text."""
+    """Determine if this is a sale or rent listing from the URL first, then text.
+
+    Previously this fell back to "rent" whenever neither the URL nor the
+    text gave a sale signal, without ever checking for a rent signal either
+    — so any ad with no keywords at all (e.g. a bare land listing) silently
+    became "rent" instead of leaving the ambiguity to a neutral default.
+    Now both signals are checked and the default matches the other scrapers.
+    """
     url_lower = url.lower()
     for kw in _SALE_PATH_KEYWORDS:
         if kw in url_lower:
@@ -74,7 +81,9 @@ def determine_listing_type_from_url(url: str, title: str, description: str) -> s
     combined = (title + " " + description).lower()
     if any(kw in combined for kw in ["vente", "a vendre", "vendre"]):
         return "sale"
-    return "rent"
+    if any(kw in combined for kw in ["location", "a louer", "louer"]):
+        return "rent"
+    return "sale"
 
 
 def determine_property_type(url: str, title: str, description: str) -> str:
@@ -134,10 +143,14 @@ def scrape_expat_detail(url: str):
             text = li.text.lower().strip()
             m_area = re.search(r"(\d+)\s*m[²2]?", text)
             if m_area and ("m²" in text or "surface" in text or "superficie" in text or "m2" in text):
-                area = int(m_area.group(1))
+                value = int(m_area.group(1))
+                if 1 <= value <= 1_000_000:
+                    area = value
             m_rooms = re.search(r"(\d+)\s*chambre", text)
             if m_rooms:
-                bedrooms = int(m_rooms.group(1))
+                value = int(m_rooms.group(1))
+                if 0 <= value <= 20:
+                    bedrooms = value
 
         # Images – /upload/housing/ path
         images = []

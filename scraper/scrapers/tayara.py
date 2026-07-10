@@ -71,6 +71,8 @@ RENT_KEYWORDS = (
     "nuité",
     "كراء",
     "للكراء",
+    "إيجار",
+    "ايجار",
 )
 
 SALE_KEYWORDS = (
@@ -102,6 +104,14 @@ def clean_text(value):
     return str(value or "").strip()
 
 
+def _is_truncated(description):
+    """Listing-page descriptions are sometimes cut off mid-sentence with a
+    trailing "..."/"…", even well past the 300-char "good enough" length
+    threshold. Length alone can't catch this, so it forces a detail-page
+    fetch for the real, complete description."""
+    return str(description or "").rstrip().endswith(("...", "…"))
+
+
 def has_keyword(text, keywords):
     lowered = text.lower()
     return any(keyword in lowered for keyword in keywords)
@@ -123,8 +133,15 @@ def determine_listing_type(title, description, url, default="sale"):
     return default
 
 
-def parse_area(description):
-    match = re.search(r"(\d+(?:[.,]\d+)?)\s*(?:m\s*(?:2|²)?|mètre|metre|hectare)", description, re.IGNORECASE)
+def parse_area(text):
+    # Accepts both Latin ("m2", "m²", "mètre") and Arabic ("م2", "م²") unit
+    # notations, since listings mix French and Arabic freely and the surface
+    # is sometimes only stated in the title (never in the description).
+    match = re.search(
+        r"(\d+(?:[.,]\d+)?)\s*(?:m\s*(?:2|²)?|mètre|metre|hectare|م\s*(?:2|²)?)",
+        text,
+        re.IGNORECASE,
+    )
     if not match:
         return None
 
@@ -132,23 +149,37 @@ def parse_area(description):
     if "hectare" in match.group(0).lower():
         area *= 10000
 
-    return int(area)
+    area = int(area)
+    return area if 1 <= area <= 1_000_000 else None
 
 
 def parse_rooms(description, title):
     text = f"{title} {description}".lower()
     bedrooms = None
 
-    s_plus_match = re.search(r"s\s*\+\s*(\d+)", text)
+    # "S+N" is the Tunisian apartment-type shorthand (S+2, S+3, ...), and is
+    # sometimes prefixed with a digit too (e.g. "2S+6"). A plain "s" would
+    # also match the last letter of any *word* ending in "s" (mois, ans,
+    # maisons, chambres, garages...) immediately followed by a "+<number>"
+    # token elsewhere in the text (e.g. "mois +230 caution", "chambres + 2
+    # Terrasses"), misreading an unrelated count as a bedroom count. The
+    # negative lookbehind only rules out a preceding Latin letter (so a
+    # leading digit, space, start-of-string, or Arabic character all still
+    # count as valid starts) — a plain \b would also reject "2S+6" (digit
+    # directly before "s") and Arabic listings that run "s+3" straight into
+    # the next Arabic word with no space (e.g. "s+3علا"), since digits and
+    # Arabic letters both count as \w in Python's regex. The \d{1,2} cap is a
+    # second safety net since a real room count never reaches 3+ digits.
+    s_plus_match = re.search(r"(?<![a-z])s\s*\+\s*(\d{1,2})", text)
     if s_plus_match:
         bedrooms = int(s_plus_match.group(1))
 
     if bedrooms is None:
-        bedroom_match = re.search(r"(\d+)\s*(chambre|pièce|piece)", text)
+        bedroom_match = re.search(r"(\d{1,2})\s*(chambre|pièce|piece)", text)
         if bedroom_match:
             bedrooms = int(bedroom_match.group(1))
 
-    return bedrooms
+    return bedrooms if bedrooms is not None and 0 <= bedrooms <= 20 else None
 
 
 def parse_house_features(title, description):
@@ -217,7 +248,11 @@ def enrich_from_detail(data):
 
     listing_images = data.get("images") or []
     listing_description = data.get("description") or ""
-    if len(listing_images) >= 2 and len(listing_description) >= 300:
+    if (
+        len(listing_images) >= 2
+        and len(listing_description) >= 300
+        and not _is_truncated(listing_description)
+    ):
         return data
 
     detail_images, full_description = scrape_detail_page(url)
@@ -243,6 +278,13 @@ def extract_listing(ad, default_listing_type="sale"):
     property_type = determine_property_type(ad)
     url = f"https://www.tayara.tn/item/{ad_id}/" if ad_id else LISTING_CATEGORIES[0][1]
 
+    # Land ads are cross-listed under both the "a-louer" and "a-vendre" top
+    # category pages and deduped by whichever is crawled first (rent), so the
+    # crawl phase is not a reliable rent/sale signal for land like it is for
+    # houses/apartments. Fall back to "sale" (the common case) instead when
+    # no explicit keyword settles it.
+    listing_type_default = "sale" if property_type == "land" else default_listing_type
+
     metadata = ad.get("metadata", {})
     subcat_id = clean_text(metadata.get("subCategory"))
     subcat_mapping = {
@@ -260,11 +302,11 @@ def extract_listing(ad, default_listing_type="sale"):
         "source": SOURCE,
         "ad_id": ad_id or None,
         "type": property_type,
-        "listing_type": determine_listing_type(title, description, url, default_listing_type),
+        "listing_type": determine_listing_type(title, description, url, listing_type_default),
         "title": title,
         "description": description,
         "price": float(ad.get("price") or 0),
-        "area": parse_area(description),
+        "area": parse_area(f"{title} {description}"),
         "city": city,
         "address": delegation or city,
         "url": url,
@@ -387,7 +429,9 @@ def _enrich_candidates(phase, candidates, progress_callback=None, cancel_event=N
     """Fetch detail pages for candidates that are missing images/description."""
     needs_enrichment = [
         d for d in candidates
-        if len(d.get("images") or []) < 2 or len(d.get("description") or "") < 300
+        if len(d.get("images") or []) < 2
+        or len(d.get("description") or "") < 300
+        or _is_truncated(d.get("description"))
     ]
     total_to_enrich = len(needs_enrichment)
     enriched_map = {}

@@ -4,31 +4,29 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Blue accent scale — "brand" is the single accent color used for
+        // primary actions, links, and highlighted text across the UI.
         brand: {
-          50: "#f0fdfa",
-          100: "#ccfbf1",
-          200: "#99f6e4",
-          300: "#5eead4",
-          400: "#2dd4bf",
-          500: "#14b8a6",
-          600: "#0d9488",
-          700: "#0f766e",
-          800: "#115e59",
-          900: "#134e4a",
-          950: "#042f2e",
-        },
-        slate: {
-          850: "#172033",
-          950: "#0b0f1a",
+          50: "#eef4ff",
+          100: "#dae7ff",
+          200: "#b7d0ff",
+          300: "#85acfd",
+          400: "#3b6fea",
+          500: "#2954d1",
+          600: "#1e40af",
+          700: "#1a3690",
+          800: "#172d75",
+          900: "#13245c",
+          950: "#0b1638",
         },
       },
       fontFamily: {
         sans: ["DM Sans", "system-ui", "sans-serif"],
-        display: ["Fraunces", "Georgia", "serif"],
+        display: ["DM Sans", "system-ui", "sans-serif"],
       },
       boxShadow: {
-        card: "0 4px 24px -4px rgba(15, 23, 42, 0.12)",
-        glow: "0 0 40px -10px rgba(20, 184, 166, 0.35)",
+        card: "0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -12px rgba(0, 0, 0, 0.08)",
+        glow: "0 8px 24px -8px rgba(0, 0, 0, 0.25)",
       },
       animation: {
         "fade-in": "fadeIn 0.5s ease-out forwards",

@@ -199,121 +199,122 @@ def get_all_properties(include_archived=False):
     return properties
 
 
-def search_properties_by_id(search_id, include_archived=False):
-    """Search properties for the admin archiving section.
-
-    Matches on exact id/ad_id as well as a free-text match on the title,
-    city and address (like the public catalog search) so a single search
-    box covers both ID lookups and name/location lookups.
-    """
-    conn = get_conn()
-    cur = conn.cursor()
-
-    search_id = (search_id or "").strip()
-
-    conditions = ["ad_id = %s", "title ILIKE %s", "city ILIKE %s", "address ILIKE %s"]
-    like_param = f"%{search_id}%"
-    params = [search_id, like_param, like_param, like_param]
-
-    # If the input is a whole number, also match the numeric primary key exactly.
-    try:
-        params.insert(0, int(search_id))
-        conditions.insert(0, "id = %s")
-    except ValueError:
-        pass
-
-    where = "(" + " OR ".join(conditions) + ")"
-    if not include_archived:
-        where += " AND archived = FALSE"
-
-    cur.execute(
-        f"""
-        SELECT {_PROPERTY_COLUMNS}
-        FROM properties
-        WHERE {where}
-        ORDER BY id DESC
-        """,
-        tuple(params),
-    )
-
-    rows = cur.fetchall()
-    properties = [_row_to_dict(cur, row) for row in rows]
-
-    cur.close()
-    conn.close()
-    return properties
+_ADMIN_SORT_COLUMNS = {
+    "id": "id",
+    "title": "title",
+    "location": "COALESCE(governorate, city, address)",
+    "subcategory": "subcategory",
+    "listing_type": "listing_type",
+    "price": "price",
+    "area": "area",
+    "bedrooms": "bedrooms",
+    "source": "source",
+}
 
 
 def search_properties_admin(
-    ad_id=None,
-    name=None,
-    location=None,
+    search=None,
+    archived_only=False,
+    offset=0,
+    limit=25,
+    sort_by="id",
+    sort_dir="desc",
+    city=None,
+    subcategory=None,
+    listing_type=None,
     min_price=None,
     max_price=None,
-    source=None,
-    limit=200,
+    min_area=None,
+    max_area=None,
+    bedrooms=None,
 ):
-    """Filtered search for the admin archiving section.
+    """Server-side paginated search for the admin archiving DataTable.
 
-    Every provided filter is combined with AND:
-      - ad_id: exact match on the numeric id or the source ad_id
-      - name: substring match on the title
-      - location: substring match on the city or address
-      - min_price / max_price: price range
-      - source: exact source website
-    Archived and non-archived ads are both returned so the admin can toggle
-    either way.
+    `search` matches (as a single free-text term) against ad_id, title,
+    city, address, governorate and source. The remaining params are the same
+    structured filters as the public catalog search (governorate, category,
+    transaction type, price/surface range, bedrooms) and combine with
+    `search` (AND). `archived_only` restricts to archived rows; otherwise
+    both archived and non-archived rows are included. Sorting and pagination
+    happen in SQL so only one page of rows ever reaches the browser,
+    regardless of how large the properties table gets.
+
+    Returns a dict with:
+      - total: row count for the current archived_only scope (unfiltered by
+        the search term/structured filters) — DataTables' "recordsTotal"
+      - total_filtered: row count after also applying the search term and
+        structured filters — DataTables' "recordsFiltered", used to compute
+        the page count
+      - items: the current page of properties
     """
     conn = get_conn()
     cur = conn.cursor()
 
-    conditions = []
-    params = []
+    sort_col = _ADMIN_SORT_COLUMNS.get(sort_by, "id")
+    sort_dir = "ASC" if str(sort_dir).lower() == "asc" else "DESC"
 
-    if ad_id and str(ad_id).strip():
-        term = str(ad_id).strip()
-        sub = ["ad_id = %s"]
-        sub_params = [term]
-        try:
-            sub.insert(0, "id = %s")
-            sub_params.insert(0, int(term))
-        except ValueError:
-            pass
-        conditions.append("(" + " OR ".join(sub) + ")")
-        params.extend(sub_params)
+    base_conditions = []
+    if archived_only:
+        base_conditions.append("archived = TRUE")
+    base_where = " AND ".join(base_conditions) if base_conditions else "TRUE"
 
-    if name and name.strip():
-        conditions.append("title ILIKE %s")
-        params.append(f"%{name.strip()}%")
-
-    if location and location.strip():
-        conditions.append("(city ILIKE %s OR address ILIKE %s)")
-        loc = f"%{location.strip()}%"
-        params.extend([loc, loc])
-
+    search_conditions = list(base_conditions)
+    search_params = []
+    if search and search.strip():
+        term = search.strip()
+        like = f"%{term}%"
+        sub = [
+            "title ILIKE %s",
+            "city ILIKE %s",
+            "address ILIKE %s",
+            "governorate ILIKE %s",
+            "source ILIKE %s",
+            "ad_id ILIKE %s",
+        ]
+        sub_params = [like, like, like, like, like, like]
+        search_conditions.append("(" + " OR ".join(sub) + ")")
+        search_params.extend(sub_params)
+    if city:
+        search_conditions.append("LOWER(governorate) = LOWER(%s)")
+        search_params.append(city)
+    if subcategory:
+        search_conditions.append("subcategory = %s")
+        search_params.append(subcategory)
+    if listing_type:
+        search_conditions.append("listing_type = %s")
+        search_params.append(listing_type)
     if min_price is not None:
-        conditions.append("price >= %s")
-        params.append(min_price)
-
+        search_conditions.append("price >= %s")
+        search_params.append(min_price)
     if max_price is not None:
-        conditions.append("price <= %s")
-        params.append(max_price)
+        search_conditions.append("price <= %s")
+        search_params.append(max_price)
+    if min_area is not None:
+        search_conditions.append("area >= %s")
+        search_params.append(min_area)
+    if max_area is not None:
+        search_conditions.append("area <= %s")
+        search_params.append(max_area)
+    if bedrooms is not None:
+        search_conditions.append("bedrooms >= %s")
+        search_params.append(bedrooms)
+    search_where = " AND ".join(search_conditions) if search_conditions else "TRUE"
 
-    if source and source.strip():
-        conditions.append("source = %s")
-        params.append(source.strip())
+    cur.execute(f"SELECT count(*) FROM properties WHERE {base_where}")
+    total = cur.fetchone()[0]
 
-    where = " AND ".join(conditions) if conditions else "TRUE"
+    cur.execute(f"SELECT count(*) FROM properties WHERE {search_where}", search_params)
+    total_filtered = cur.fetchone()[0]
 
     cur.execute(
         f"""
         SELECT {_PROPERTY_COLUMNS}
         FROM properties
-        WHERE {where}
-        ORDER BY id DESC
-        LIMIT %s
+        WHERE {search_where}
+        ORDER BY {sort_col} {sort_dir} NULLS LAST, id DESC
+        LIMIT %s OFFSET %s
         """,
-        (*params, limit),
+        (*search_params, limit, offset),
     )
 
     rows = cur.fetchall()
@@ -321,7 +322,7 @@ def search_properties_admin(
 
     cur.close()
     conn.close()
-    return properties
+    return {"total": total, "total_filtered": total_filtered, "items": properties}
 
 
 def archive_property(property_id):

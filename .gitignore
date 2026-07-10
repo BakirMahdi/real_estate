@@ -12,6 +12,8 @@ venv/
 logs/
 node_modules/
 frontend/dist/
+frontend/certs/*.crt
 *.tsbuildinfo
 tayara_debug.html
 mubawab_debug.html
+db/backups/

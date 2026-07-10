@@ -276,18 +276,3 @@ def bulk_insert_properties(items):
     cur.close()
     conn.close()
     return inserted, errors, inserted_ids
-
-
-def delete_properties_by_ids(ids):
-    """Delete property rows by primary key. Used to roll back a cancelled scrape."""
-    if not ids:
-        return 0
-
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("DELETE FROM properties WHERE id = ANY(%s)", (list(ids),))
-    deleted = cur.rowcount
-    conn.commit()
-    cur.close()
-    conn.close()
-    return deleted

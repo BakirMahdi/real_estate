@@ -45,6 +45,7 @@ export interface ScrapeResult {
   error?: string;
   message?: string | null;
   phases?: Record<string, ScrapePhaseStats>;
+  cancelled?: boolean;
 }
 
 export interface ScrapeSourceProgress {
@@ -83,11 +84,19 @@ export interface HealthStatus {
   database?: string;
 }
 
-export interface ArchiveSearchFilters {
-  ad_id?: string;
-  name?: string;
-  location?: string;
-  min_price?: number;
-  max_price?: number;
-  source?: string;
+export interface ArchiveSearchParams {
+  search?: string;
+  archivedOnly?: boolean;
+  offset?: number;
+  limit?: number;
+  sortBy?: string;
+  sortDir?: "asc" | "desc";
+  city?: string;
+  subcategory?: string;
+  listingType?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  minArea?: number;
+  maxArea?: number;
+  bedrooms?: number;
 }

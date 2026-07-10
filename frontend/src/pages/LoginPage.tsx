@@ -41,25 +41,28 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="mb-8 text-center">
-          <Link to="/" className="inline-flex items-center justify-center gap-3">
+          <Link
+            to="/"
+            className="inline-flex items-center justify-center gap-3"
+          >
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 shadow-glow">
               <Building2 className="h-6 w-6 text-white" />
             </div>
             <div className="text-left">
-              <p className="font-display text-2xl font-semibold tracking-tight text-white">
+              <p className="font-display text-2xl font-semibold tracking-tight text-slate-900">
                 Rews
               </p>
-              <p className="text-sm text-slate-400">Immobilier Tunisie</p>
+              <p className="text-sm text-slate-500">Immobilier Tunisie</p>
             </div>
           </Link>
         </div>
 
         <div className="glass rounded-2xl p-8">
           <div className="mb-6">
-            <h1 className="font-display text-2xl font-semibold tracking-tight text-white">
+            <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
               {isLogin ? "Connexion" : "Créer un compte"}
             </h1>
-            <p className="mt-2 text-sm text-slate-400">
+            <p className="mt-2 text-sm text-slate-500">
               {isLogin
                 ? "Connectez-vous pour accéder au dashboard"
                 : "Créez un compte pour commencer"}
@@ -68,13 +71,16 @@ export function LoginPage() {
 
           {error && (
             <div className="mb-4 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-              <p className="text-sm text-red-400">{error}</p>
+              <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="username" className="mb-2 block text-sm font-medium text-slate-300">
+              <label
+                htmlFor="username"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
                 Nom d'utilisateur
               </label>
               <input
@@ -82,7 +88,7 @@ export function LoginPage() {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 placeholder="votre_nom"
                 required
                 minLength={3}
@@ -90,7 +96,10 @@ export function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="mb-2 block text-sm font-medium text-slate-300">
+              <label
+                htmlFor="password"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
                 Mot de passe
               </label>
               <input
@@ -98,7 +107,7 @@ export function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-lg border border-white/10 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                className="w-full rounded-lg border border-slate-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 placeholder="••••••••"
                 required
                 minLength={6}
@@ -133,7 +142,7 @@ export function LoginPage() {
                 setIsLogin(!isLogin);
                 setError(null);
               }}
-              className="text-sm text-slate-400 transition hover:text-brand-400"
+              className="text-sm text-slate-500 transition hover:text-slate-900"
             >
               {isLogin
                 ? "Pas encore de compte ? Créer un compte"
@@ -145,7 +154,7 @@ export function LoginPage() {
         <div className="mt-6 text-center">
           <Link
             to="/"
-            className="text-sm text-slate-400 transition hover:text-brand-400"
+            className="text-sm text-slate-500 transition hover:text-slate-900"
           >
             ← Retour à l'accueil
           </Link>

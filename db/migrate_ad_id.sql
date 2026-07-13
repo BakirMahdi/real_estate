@@ -18,7 +18,14 @@ ALTER TABLE properties DROP CONSTRAINT IF EXISTS properties_url_key;
 ALTER TABLE properties ALTER COLUMN source SET NOT NULL;
 ALTER TABLE properties ALTER COLUMN ad_id SET NOT NULL;
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_properties_source_ad_id ON properties(source, ad_id);
+-- Not UNIQUE: the app intentionally inserts a new row with the same
+-- (source, ad_id) when a listing's fields change (versioning, see
+-- scraper/insert.py) without archiving the old row first. A unique index
+-- here would make every re-scrape of a changed listing fail as a silently
+-- swallowed insert error. This index exists purely to speed up the
+-- DISTINCT ON (source, ad_id) ... ORDER BY source, ad_id, id lookup used by
+-- the main search query.
+CREATE INDEX IF NOT EXISTS idx_properties_source_ad_id ON properties(source, ad_id, id DESC);
 
 ALTER TABLE properties ADD COLUMN IF NOT EXISTS listing_type TEXT NOT NULL DEFAULT 'sale';
 

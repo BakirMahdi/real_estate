@@ -1,18 +1,48 @@
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Building2, LayoutDashboard, Search, LogIn, LogOut } from "lucide-react";
-import { isAuthenticated, logout, isAdmin } from "../api/client";
+import { Building2, ChevronDown, LayoutDashboard, Search, LogIn, LogOut, UserCircle } from "lucide-react";
+import { isAuthenticated, logout, isAdmin, getUsername } from "../api/client";
+import { useLang, type Lang } from "../lib/i18n";
 
 const nav = [
-  { to: "/", label: "Annonces", icon: Search },
-  { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: true },
+  { to: "/annonces", labelKey: "nav.listings", icon: Search },
+  { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, adminOnly: true },
 ];
+
+const LANGS: Lang[] = ["fr", "en"];
 
 export function Header() {
   const location = useLocation();
   const authenticated = isAuthenticated();
   const userIsAdmin = isAdmin();
+  const username = getUsername();
+  const { lang, setLang, t } = useLang();
+
+  // Account menu: the email acts as a trigger that reveals a popover holding
+  // the logout button, keeping the header compact.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
 
   const handleLogout = () => {
+    setMenuOpen(false);
     logout();
     window.location.href = "/";
   };
@@ -28,12 +58,12 @@ export function Header() {
             <p className="font-display text-lg font-semibold tracking-tight text-slate-900">
               Rews
             </p>
-            <p className="text-xs text-slate-500">Immobilier Tunisie</p>
+            <p className="text-xs text-slate-500">Real Estate Web Scraper</p>
           </div>
         </Link>
 
         <nav className="flex items-center gap-1">
-          {nav.map(({ to, label, icon: Icon, adminOnly }) => {
+          {nav.map(({ to, labelKey, icon: Icon, adminOnly }) => {
             if (adminOnly && !userIsAdmin) return null;
             const active = location.pathname === to;
             return (
@@ -47,27 +77,74 @@ export function Header() {
                 }`}
               >
                 <Icon className="h-4 w-4" />
-                <span className="hidden sm:inline">{label}</span>
+                <span className="hidden sm:inline">{t(labelKey)}</span>
               </Link>
             );
           })}
           {authenticated ? (
-            <button
-              onClick={handleLogout}
-              className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-            >
-              <LogOut className="h-4 w-4" />
-              <span className="hidden sm:inline">Déconnexion</span>
-            </button>
+            <div className="relative" ref={menuRef}>
+              <button
+                type="button"
+                onClick={() => setMenuOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                  menuOpen
+                    ? "bg-slate-100 text-slate-900"
+                    : "text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                <UserCircle className="h-4 w-4 shrink-0 text-brand-500" />
+                {username && <span className="break-all">{username}</span>}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 shrink-0 text-slate-400 transition ${
+                    menuOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+              {menuOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-2 min-w-[10rem] rounded-xl border border-slate-100 bg-white p-1 shadow-lg"
+                >
+                  <button
+                    role="menuitem"
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    {t("nav.logout")}
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <Link
               to="/login"
               className="flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
             >
               <LogIn className="h-4 w-4" />
-              <span className="hidden sm:inline">Connexion</span>
+              <span className="hidden sm:inline">{t("nav.login")}</span>
             </Link>
           )}
+
+          <div className="ml-2 flex items-center rounded-xl border border-slate-200 bg-white p-0.5">
+            {LANGS.map((code) => (
+              <button
+                key={code}
+                type="button"
+                onClick={() => setLang(code)}
+                aria-pressed={lang === code}
+                className={`rounded-[10px] px-2.5 py-1.5 text-xs font-semibold uppercase transition ${
+                  lang === code
+                    ? "bg-brand-600 text-white"
+                    : "text-slate-400 hover:text-slate-900"
+                }`}
+              >
+                {code}
+              </button>
+            ))}
+          </div>
         </nav>
       </div>
     </header>

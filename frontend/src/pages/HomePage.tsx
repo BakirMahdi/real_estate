@@ -6,6 +6,7 @@ import { FilterBar } from "../components/FilterBar";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import { PropertyCard } from "../components/PropertyCard";
 import type { Property, SearchFilters } from "../types/property";
+import { useLang } from "../lib/i18n";
 
 const PAGE_SIZE = 12;
 
@@ -21,6 +22,7 @@ export function HomePage() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLang();
 
   const loadGovernorates = useCallback(async () => {
     try {
@@ -46,7 +48,7 @@ export function HomePage() {
       setTotal(data.count);
       setProperties(data.items);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur de chargement");
+      setError(err instanceof Error ? err.message : t("home.loadError"));
     } finally {
       setLoading(false);
     }
@@ -105,15 +107,12 @@ export function HomePage() {
       <section className="mb-10 animate-fade-in">
         <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
           <Home className="h-4 w-4" />
-          Catalogue
+          {t("home.catalog")}
         </div>
         <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
-          Trouvez votre bien
+          {t("home.title")}
         </h1>
-        <p className="mt-3 max-w-2xl text-slate-500">
-          Annonces immobilières agrégées depuis Tayara, Mubawab et Expat —
-          maisons, appartements et terrains à travers la Tunisie.
-        </p>
+        <p className="mt-3 max-w-2xl text-slate-500">{t("home.subtitle")}</p>
       </section>
 
       <div className="mb-8">
@@ -127,13 +126,13 @@ export function HomePage() {
 
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          <span className="font-medium text-slate-900">{total}</span> annonce
-          {total !== 1 ? "s" : ""} trouvée{total !== 1 ? "s" : ""}
+          <span className="font-medium text-slate-900">{total}</span>{" "}
+          {total !== 1 ? t("home.found.many") : t("home.found.one")}
         </p>
       </div>
 
       {loading ? (
-        <LoadingSpinner label="Chargement des annonces..." />
+        <LoadingSpinner label={t("home.loading")} />
       ) : error ? (
         <div className="glass rounded-2xl p-8 text-center">
           <p className="text-red-600">{error}</p>
@@ -142,14 +141,12 @@ export function HomePage() {
             onClick={() => loadProperties(filters)}
             className="btn-primary mt-4"
           >
-            Réessayer
+            {t("home.retry")}
           </button>
         </div>
       ) : properties.length === 0 ? (
         <div className="glass rounded-2xl p-12 text-center">
-          <p className="text-slate-500">
-            Aucune annonce ne correspond à vos filtres.
-          </p>
+          <p className="text-slate-500">{t("home.noResults")}</p>
         </div>
       ) : (
         <>
@@ -167,16 +164,16 @@ export function HomePage() {
           {totalPages > 1 && (
             <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-100 pt-6 sm:flex-row animate-fade-in">
               <p className="text-sm text-slate-500">
-                Affichage de{" "}
+                {t("home.showing")}{" "}
                 <span className="font-medium text-slate-900">
                   {Math.min((filters.offset ?? 0) + 1, total)}
                 </span>{" "}
-                à{" "}
+                {t("home.to")}{" "}
                 <span className="font-medium text-slate-900">
                   {Math.min((filters.offset ?? 0) + properties.length, total)}
                 </span>{" "}
-                sur <span className="font-medium text-slate-900">{total}</span>{" "}
-                annonces
+                {t("home.of")} <span className="font-medium text-slate-900">{total}</span>{" "}
+                {t("home.listings")}
               </p>
 
               <div className="flex items-center gap-1">
@@ -185,7 +182,7 @@ export function HomePage() {
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1 || loading}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
-                  aria-label="Page précédente"
+                  aria-label={t("home.prevPage")}
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -225,7 +222,7 @@ export function HomePage() {
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages || loading}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
-                  aria-label="Page suivante"
+                  aria-label={t("home.nextPage")}
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>

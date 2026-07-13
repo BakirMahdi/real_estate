@@ -6,7 +6,10 @@ services:
     env_file:
       - .env
     ports:
-      - "5434:5432"
+      # Bound to loopback only: this is a raw Postgres port with whatever
+      # password is in .env (the example password is weak), it must never be
+      # reachable from outside the host it runs on.
+      - "127.0.0.1:5434:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -34,10 +37,32 @@ services:
       # Number of websites scraped at the same time. All 3 run concurrently;
       # they hit different domains, so total time ~= the slowest single site.
       SCRAPER_SITE_CONCURRENCY: "3"
+      # Where the trained price model artifact is read/written (mounted volume).
+      MODEL_DIR: /app/models
+      # Where the agent's generated secrets (read-only DB role password) live.
+      DATA_DIR: /app/data
     ports:
-      - "8000:8000"
+      # Bound to loopback only: _client_ip() in main.py trusts
+      # X-Forwarded-For unconditionally (nginx sets it correctly for
+      # same-origin traffic), so a client hitting this port directly could
+      # otherwise spoof that header and bypass the per-IP rate limits on
+      # login/register/agent-chat.
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     volumes:
       - ./logs:/app/logs
+      # Trained ML artifacts (price model) live on the host so a retrain
+      # isn't needed after every image rebuild.
+      - ./models:/app/models
+      # Backend-generated secrets (e.g. the agent's read-only DB role
+      # password) that must survive container recreation without being
+      # committed to git.
+      - ./data:/app/data
     # Safety net: cap the backend's memory so a heavy scrape can never consume
     # all host RAM and drag the whole machine (and the separate DB container)
     # down with it. If the limit is hit the backend alone is restarted
@@ -57,19 +82,39 @@ services:
     restart: unless-stopped
     ports:
       - "3000:80"
+    healthcheck:
+      # 127.0.0.1, not localhost: this image's localhost resolves to ::1
+      # first and nginx isn't listening on IPv6, so wget would otherwise
+      # always fail with "connection refused" despite nginx being healthy.
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   pgadmin:
     image: dpage/pgadmin4:8
     container_name: realestate-pgadmin
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@admin.com
-      PGADMIN_DEFAULT_PASSWORD: admin
-      PGADMIN_CONFIG_SERVER_MODE: "False"
+      # Falls back to the same defaults as before when PGADMIN_DEFAULT_* are
+      # unset in .env, so this doesn't break an existing setup - but set them
+      # in .env instead of leaving them hardcoded here if this ever runs
+      # somewhere besides localhost.
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      # Server mode (the default for this image) requires the login above
+      # instead of skipping straight to the DB browser.
+      PGADMIN_CONFIG_SERVER_MODE: "True"
     ports:
-      - "5433:80"
+      # Bound to loopback only - a DB GUI has no business being reachable
+      # from outside the host it runs on.
+      - "127.0.0.1:5433:80"
     volumes:
       - pgadmin_data:/var/lib/pgadmin
       - ./pgadmin/servers.json:/pgadmin4/servers.json:ro

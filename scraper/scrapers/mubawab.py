@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 from requests import RequestException
 
 from ..cancellation import raise_if_cancelled
+from ..classify import canonical_property_type
 from ..http_client import get_session
 
 import os
@@ -71,11 +72,25 @@ def _is_truncated(description):
 
 
 def parse_number(value):
+    """Parse a French/Maghreb-formatted number, distinguishing a thousands
+    separator from a decimal point.
+
+    Ads write both: thousands-grouped prices ("250.000 DT" -> 250000, always
+    grouped in chunks of exactly 3 digits from the right) and decimal areas
+    ("150.5 m\u00b2" -> 150, "90,75 m\u00b2" -> 90). Since a real thousands group is
+    always exactly 3 digits, a trailing group of 1-2 digits after a separator
+    can only be a decimal fraction, not a thousands group - so it's dropped
+    (the DB stores area/price as whole numbers, not floats).
+    """
     match = re.search(r"\d+(?:[\s\u00a0.,]\d+)*", value or "")
     if not match:
         return None
 
-    number = re.sub(r"[^\d]", "", match.group(0))
+    groups = re.split(r"[\s\u00a0.,]", match.group(0))
+    if len(groups) > 1 and len(groups[-1]) in (1, 2):
+        groups = groups[:-1]
+
+    number = "".join(groups)
     return int(number) if number else None
 
 
@@ -107,17 +122,42 @@ def determine_listing_type(title, description, url, default="sale"):
     return default
 
 
-def determine_property_type(title, description, url):
-    text = f"{title} {description} {url}".lower()
-    land_keywords = ("terrain", "lotissement", "hectare")
-    house_keywords = ("maison", "villa", "appartement", "studio", "immeuble", "bureau")
+_LAND_KEYWORDS = ("terrain", "lotissement", "hectare")
+_HOUSE_KEYWORDS = ("maison", "villa", "appartement", "studio", "immeuble", "bureau")
 
-    if any(keyword in text for keyword in land_keywords):
-        if any(keyword in text for keyword in house_keywords):
-            return "house"
+
+def _first_keyword_type(text):
+    """Whichever of land_keywords/house_keywords appears first in `text`
+    names the actual property ("Terrain ... ideal pour villa" is land,
+    "Maison avec terrain" is a house). Returns "land"/"house"/None (neither
+    keyword set present)."""
+    text = (text or "").lower()
+    land_pos = min((text.find(k) for k in _LAND_KEYWORDS if k in text), default=-1)
+    house_pos = min((text.find(k) for k in _HOUSE_KEYWORDS if k in text), default=-1)
+    if land_pos != -1 and (house_pos == -1 or land_pos < house_pos):
         return "land"
+    if house_pos != -1 and (land_pos == -1 or house_pos < land_pos):
+        return "house"
+    return None
 
-    return "house"
+
+def determine_property_type(title, description, url):
+    # The title is the reliable signal for what is actually being sold. A
+    # listing titled "Terrain a vendre a X" is a land ad even when its
+    # description mentions building on it ("ideal pour une villa", "convient a
+    # un promoteur d'immeuble") -- previously any house keyword anywhere in the
+    # description flipped such ads to "house", misclassifying hundreds of
+    # terrains. So decide from the title first, then fall back to the same
+    # first-mention rule over the full text (title+description+url) when the
+    # title alone has neither keyword - previously that fallback path always
+    # resolved a tie to "house", reintroducing a smaller-scale version of the
+    # same bug for ads whose title was generic.
+    by_title = _first_keyword_type(title)
+    if by_title is not None:
+        return by_title
+
+    by_text = _first_keyword_type(f"{title} {description} {url}")
+    return by_text or "house"
 
 
 def determine_subcategory(title, description, url, property_type):
@@ -298,6 +338,9 @@ def extract_listing(card, default_listing_type="sale"):
     area, bedrooms = extract_features(card)
     property_type = determine_property_type(title, card_description, url)
     subcategory = determine_subcategory(title, card_description, url, property_type)
+    # Unify the two signals into one correct fine-grained category so
+    # property_type reflects apartment/studio/office too, not just house/land.
+    property_type = subcategory = canonical_property_type(property_type, subcategory)
     ad_id = extract_ad_id(url)
 
     # Land ads found in the general rent/sale categories are held back and
@@ -335,7 +378,9 @@ def extract_listing(card, default_listing_type="sale"):
         "images": card_images,
     }
 
-    if property_type == "house":
+    # Every non-land property (house, apartment, studio, office) can have
+    # bedrooms and the other building features; only land has none.
+    if property_type != "land":
         data.update({
             "bedrooms": bedrooms,
             **extract_house_features(card, title, card_description),

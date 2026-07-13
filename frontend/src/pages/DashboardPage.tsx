@@ -26,9 +26,9 @@ import {
 import {
   API_BASE,
   api,
-  getAuthToken,
   isAuthenticated,
   logout,
+  setSession,
 } from "../api/client";
 import {
   formatArea,
@@ -40,6 +40,7 @@ import {
   subcategoryLabel,
   truncate,
 } from "../lib/format";
+import { useLang } from "../lib/i18n";
 import type {
   HealthStatus,
   Property,
@@ -144,12 +145,13 @@ function ArchiveToggle({
   archived: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useLang();
   return (
     <button
       type="button"
       role="switch"
       aria-checked={archived}
-      aria-label={archived ? "Restaurer l'annonce" : "Archiver l'annonce"}
+      aria-label={archived ? t("dashboard.restoreAd") : t("dashboard.archiveAd")}
       onClick={(e) => {
         e.stopPropagation();
         onToggle();
@@ -168,18 +170,6 @@ function ArchiveToggle({
 }
 
 const PHASE_ORDER = ["rent", "sale", "land"] as const;
-
-const PHASE_LABELS: Record<string, string> = {
-  rent: "Location",
-  sale: "Vente",
-  land: "Terrains",
-};
-
-const STEP_LABELS: Record<string, string> = {
-  listing: "Collecte des pages",
-  enriching: "Détails des annonces",
-  inserting: "Insertion en base",
-};
 
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -225,6 +215,7 @@ export function DashboardPage() {
     null,
   );
   const [cancelling, setCancelling] = useState(false);
+  const [retraining, setRetraining] = useState(false);
   const [scrapeCancelled, setScrapeCancelled] = useState(false);
   const [restoredArchiveState] = useState(() => loadArchiveTableState());
   const [showArchivedOnly, setShowArchivedOnly] = useState(
@@ -246,21 +237,41 @@ export function DashboardPage() {
   );
   const archiveTableRef = useRef<DataTableRef>(null);
   const navigate = useNavigate();
+  const { t, lang } = useLang();
+
+  const phaseLabel = (phase: string) =>
+    ({
+      rent: t("dashboard.phaseRent"),
+      sale: t("dashboard.phaseSale"),
+      land: t("dashboard.phaseLand"),
+    })[phase] ?? phase;
+  const stepLabel = (step: string) =>
+    ({
+      listing: t("dashboard.stepListing"),
+      enriching: t("dashboard.stepEnriching"),
+      inserting: t("dashboard.stepInserting"),
+    })[step] ?? step;
+  const propertyTypeLabel = (type: string) =>
+    ({
+      house: t("dashboard.typeHouse"),
+      land: t("dashboard.typeLand"),
+      apartment: t("dashboard.typeApartment"),
+      studio: t("dashboard.typeStudio"),
+      office: t("dashboard.typeOffice"),
+    })[type] ?? type;
 
   useEffect(() => {
     scrapingRef.current = scraping;
   }, [scraping]);
 
   // Auto-cancel the scrape if the page is refreshed or closed while it runs.
-  // sendBeacon can't set headers, so the JWT goes in the query string; the
-  // backend only cancels manually started scrapes through this endpoint.
+  // sendBeacon can't set headers, but a same-origin beacon automatically
+  // carries the HttpOnly auth cookie, so the backend still authenticates it;
+  // it only cancels manually started scrapes through this endpoint.
   useEffect(() => {
     const handlePageHide = () => {
       if (scrapingRef.current) {
-        const token = getAuthToken() ?? "";
-        navigator.sendBeacon(
-          `${API_BASE}/scrape/cancel-beacon?token=${encodeURIComponent(token)}`,
-        );
+        navigator.sendBeacon(`${API_BASE}/scrape/cancel-beacon`);
       }
     };
     window.addEventListener("pagehide", handlePageHide);
@@ -274,37 +285,52 @@ export function DashboardPage() {
     }
     setLoading(true);
     try {
-      const [health, dbStatus, props, scrapeStatus, kpisData] =
-        await Promise.all([
+      // allSettled (not all): one endpoint failing shouldn't wrongly blank
+      // out the others' already-healthy state (e.g. a transient KPI query
+      // error used to make the API/DB status cards falsely show "Offline").
+      const [healthResult, dbResult, propsResult, scrapeResult, kpisResult] =
+        await Promise.allSettled([
           api.health(),
           api.healthDb(),
           api.getAllProperties(),
           api.getScrapeStatus(),
           api.getKpis(),
         ]);
-      setApiHealth(health);
-      setDbHealth(dbStatus);
-      setTotalProperties(props.count);
-      setKpis(kpisData);
-      if (scrapeStatus.next_scrape_time !== undefined) {
-        setNextScrapeTime(scrapeStatus.next_scrape_time);
-      }
-      if (scrapeStatus.progress) {
-        setScrapeProgress(scrapeStatus.progress);
-      }
 
-      if (scrapeStatus.is_scraping) {
-        setScraping(true);
-      } else if (scrapeStatus.results && !scrapeResults) {
-        setScrapeResults(scrapeStatus.results);
-      }
-    } catch (err) {
-      if (err instanceof Error && err.message === "UNAUTHORIZED") {
+      const results = [healthResult, dbResult, propsResult, scrapeResult, kpisResult];
+      const unauthorized = results.some(
+        (r) => r.status === "rejected" && r.reason instanceof Error && r.reason.message === "UNAUTHORIZED"
+      );
+      if (unauthorized) {
         setNeedsAuth(true);
         logout();
-      } else {
-        setApiHealth(null);
-        setDbHealth(null);
+        return;
+      }
+
+      setApiHealth(healthResult.status === "fulfilled" ? healthResult.value : null);
+      setDbHealth(dbResult.status === "fulfilled" ? dbResult.value : null);
+
+      if (propsResult.status === "fulfilled") {
+        setTotalProperties(propsResult.value.count);
+      }
+      if (kpisResult.status === "fulfilled") {
+        setKpis(kpisResult.value);
+      }
+      if (scrapeResult.status === "fulfilled") {
+        const scrapeStatus = scrapeResult.value;
+        if (scrapeStatus.next_scrape_time !== undefined) {
+          setNextScrapeTime(scrapeStatus.next_scrape_time);
+        }
+        if (scrapeStatus.progress) {
+          setScrapeProgress(scrapeStatus.progress);
+        }
+
+        setRetraining(Boolean(scrapeStatus.training));
+        if (scrapeStatus.is_scraping) {
+          setScraping(true);
+        } else if (scrapeStatus.results && !scrapeResults) {
+          setScrapeResults(scrapeStatus.results);
+        }
       }
     } finally {
       setLoading(false);
@@ -335,6 +361,7 @@ export function DashboardPage() {
           if (status.next_scrape_time !== undefined) {
             setNextScrapeTime(status.next_scrape_time);
           }
+          setRetraining(Boolean(status.training));
           if (!status.is_scraping) {
             setScraping(false);
             setCancelling(false);
@@ -373,25 +400,34 @@ export function DashboardPage() {
   useEffect(() => {
     if (!nextScrapeTime) return;
 
+    // Once the countdown hits 0, schedule exactly one refresh 2s later - the
+    // `refreshTimeout` guard stops every subsequent 1s tick (diff stays 0
+    // until `refresh()` eventually updates nextScrapeTime) from stacking up
+    // another uncancelled timeout, which previously turned into an ~1/sec
+    // polling loop against 5 endpoints.
+    let refreshTimeout: ReturnType<typeof setTimeout> | undefined;
+
     const updateCountdown = () => {
       const diff = Math.max(0, Math.floor(nextScrapeTime - Date.now() / 1000));
       setTimeLeft(diff);
 
-      if (diff === 0) {
-        const timeout = setTimeout(() => {
+      if (diff === 0 && refreshTimeout === undefined) {
+        refreshTimeout = setTimeout(() => {
           refresh();
         }, 2000);
-        return () => clearTimeout(timeout);
       }
     };
 
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (refreshTimeout !== undefined) clearTimeout(refreshTimeout);
+    };
   }, [nextScrapeTime, refresh]);
 
   const formatCountdown = (seconds: number) => {
-    if (seconds <= 0) return "Démarrage…";
+    if (seconds <= 0) return t("dashboard.starting");
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = seconds % 60;
@@ -419,7 +455,7 @@ export function DashboardPage() {
         logout();
       } else {
         setScrapeError(
-          err instanceof Error ? err.message : "Échec du démarrage du scrape",
+          err instanceof Error ? err.message : t("dashboard.startFailed"),
         );
       }
     }
@@ -436,9 +472,7 @@ export function DashboardPage() {
         logout();
       } else {
         setScrapeError(
-          err instanceof Error
-            ? err.message
-            : "Échec de l'annulation du scrape",
+          err instanceof Error ? err.message : t("dashboard.cancelFailed"),
         );
       }
     }
@@ -494,17 +528,17 @@ export function DashboardPage() {
     // Kept but hidden (not a visible column) so the default "newest first"
     // sort still works without exposing the raw id to the admin.
     { data: "id", title: "ID", visible: false },
-    { data: "title", title: "Nom", className: "font-medium text-slate-900" },
-    { data: "location", title: "Localisation" },
-    { data: "categoryLabel", title: "Catégorie" },
-    { data: "transactionLabel", title: "Transaction" },
-    { data: "priceLabel", title: "Prix" },
-    { data: "areaLabel", title: "Surface" },
-    { data: "bedroomsLabel", title: "Chambres" },
-    { data: "sourceLabel", title: "Source" },
+    { data: "title", title: t("dashboard.colName"), className: "font-medium text-slate-900" },
+    { data: "location", title: t("dashboard.colLocation") },
+    { data: "categoryLabel", title: t("dashboard.colCategory") },
+    { data: "transactionLabel", title: t("dashboard.colTransaction") },
+    { data: "priceLabel", title: t("dashboard.colPrice") },
+    { data: "areaLabel", title: t("dashboard.colArea") },
+    { data: "bedroomsLabel", title: t("dashboard.colBedrooms") },
+    { data: "sourceLabel", title: t("dashboard.colSource") },
     {
       data: "archived",
-      title: "Archivé",
+      title: t("dashboard.colArchived"),
       orderable: false,
       className: "text-right",
     },
@@ -588,17 +622,17 @@ export function DashboardPage() {
       topEnd: null,
     },
     language: {
-      processing: "Chargement…",
-      lengthMenu: "Afficher _MENU_ lignes",
-      info: "_START_ à _END_ sur _TOTAL_ lignes",
-      infoEmpty: "Aucune ligne à afficher",
-      infoFiltered: "(filtré depuis _MAX_ lignes)",
-      zeroRecords: "Aucune annonce trouvée",
+      processing: t("dashboard.dtProcessing"),
+      lengthMenu: t("dashboard.dtLengthMenu"),
+      info: t("dashboard.dtInfo"),
+      infoEmpty: t("dashboard.dtInfoEmpty"),
+      infoFiltered: t("dashboard.dtInfoFiltered"),
+      zeroRecords: t("dashboard.dtZeroRecords"),
       paginate: {
-        first: "Premier",
-        last: "Dernier",
-        next: "Suivant",
-        previous: "Précédent",
+        first: t("dashboard.dtFirst"),
+        last: t("dashboard.dtLast"),
+        next: t("dashboard.dtNext"),
+        previous: t("dashboard.dtPrevious"),
       },
     },
     createdRow: (row, data) => {
@@ -617,14 +651,13 @@ export function DashboardPage() {
 
     try {
       const response = await api.login("admin", passwordInput);
-      // Store the token
-      const token = response.access_token;
-      localStorage.setItem("auth_token", token);
-      localStorage.setItem("user_role", response.role);
+      // The JWT is set as an HttpOnly cookie by the backend; keep only
+      // non-sensitive UI state locally.
+      setSession(response.role, response.username);
       setNeedsAuth(false);
       refresh();
     } catch (err) {
-      setAuthError("Mot de passe incorrect. Veuillez réessayer.");
+      setAuthError(t("dashboard.wrongPassword"));
     } finally {
       setIsAuthenticating(false);
     }
@@ -641,15 +674,15 @@ export function DashboardPage() {
             <Lock className="h-6 w-6 text-brand-400" />
           </div>
           <h2 className="mb-2 font-display text-2xl font-semibold text-slate-900">
-            Authentification requise
+            {t("dashboard.authRequired")}
           </h2>
           <p className="mb-6 text-sm text-slate-500">
-            Veuillez vous connecter pour accéder au dashboard.
+            {t("dashboard.authSubtitle")}
           </p>
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <input
               type="password"
-              placeholder="Mot de passe"
+              placeholder={t("dashboard.passwordPlaceholder")}
               value={passwordInput}
               onChange={(e) => setPasswordInput(e.target.value)}
               className={`w-full rounded-xl border bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 ${authError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 focus:border-brand-500 focus:ring-brand-500"}`}
@@ -667,10 +700,10 @@ export function DashboardPage() {
               {isAuthenticating ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Vérification…
+                  {t("dashboard.verifying")}
                 </>
               ) : (
-                "Se connecter"
+                t("dashboard.signIn")
               )}
             </button>
           </form>
@@ -684,10 +717,10 @@ export function DashboardPage() {
       <section className="mb-10 animate-fade-in">
         <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
           <Activity className="h-4 w-4" />
-          Administration
+          {t("dashboard.administration")}
         </div>
         <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900">
-          Dashboard
+          {t("dashboard.title")}
         </h1>
       </section>
 
@@ -700,7 +733,10 @@ export function DashboardPage() {
           {loading ? (
             <Loader2 className="mt-2 h-5 w-5 animate-spin text-slate-400" />
           ) : (
-            <StatusBadge ok={apiOk} label={apiOk ? "En ligne" : "Hors ligne"} />
+            <StatusBadge
+              ok={apiOk}
+              label={apiOk ? t("dashboard.online") : t("dashboard.offline")}
+            />
           )}
         </div>
 
@@ -711,13 +747,13 @@ export function DashboardPage() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/20">
             <Database className="h-5 w-5 text-violet-600" />
           </div>
-          <p className="text-xs text-slate-400">Base de données</p>
+          <p className="text-xs text-slate-400">{t("dashboard.database")}</p>
           {loading ? (
             <Loader2 className="mt-2 h-5 w-5 animate-spin text-slate-400" />
           ) : (
             <StatusBadge
               ok={dbOk}
-              label={dbOk ? "Connectée" : "Indisponible"}
+              label={dbOk ? t("dashboard.connected") : t("dashboard.unavailable")}
             />
           )}
         </div>
@@ -729,7 +765,7 @@ export function DashboardPage() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-600/20">
             <Download className="h-5 w-5 text-amber-600" />
           </div>
-          <p className="text-xs text-slate-400">Annonces en base</p>
+          <p className="text-xs text-slate-400">{t("dashboard.totalAds")}</p>
           <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
             {loading ? "—" : totalProperties}
           </p>
@@ -744,7 +780,7 @@ export function DashboardPage() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600/20">
             <Archive className="h-5 w-5 text-emerald-600" />
           </div>
-          <p className="text-xs text-slate-400">Annonces archivées</p>
+          <p className="text-xs text-slate-400">{t("dashboard.archivedAds")}</p>
           <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
             {loading ? "—" : (kpis?.archived_count ?? 0)}
           </p>
@@ -757,7 +793,7 @@ export function DashboardPage() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/20">
             <Users className="h-5 w-5 text-blue-600" />
           </div>
-          <p className="text-xs text-slate-400">Utilisateurs inscrits</p>
+          <p className="text-xs text-slate-400">{t("dashboard.users")}</p>
           <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
             {loading ? "—" : (kpis?.user_count ?? 0)}
           </p>
@@ -770,7 +806,7 @@ export function DashboardPage() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-600/20">
             <Globe className="h-5 w-5 text-cyan-600" />
           </div>
-          <p className="text-xs text-slate-400">Sources actives</p>
+          <p className="text-xs text-slate-400">{t("dashboard.activeSources")}</p>
           <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
             {loading ? "—" : Object.keys(kpis?.ads_by_source ?? {}).length}
           </p>
@@ -784,12 +820,12 @@ export function DashboardPage() {
             style={{ animationDelay: "350ms" }}
           >
             <h3 className="mb-4 font-display text-lg font-semibold text-slate-900">
-              Propriétés par type
+              {t("dashboard.propsByType")}
             </h3>
             <div className="space-y-3">
               {Object.entries(kpis.properties_by_type).map(([type, count]) => (
                 <div key={type} className="flex items-center justify-between">
-                  <span className="text-sm text-slate-700">{type}</span>
+                  <span className="text-sm text-slate-700">{propertyTypeLabel(type)}</span>
                   <span className="font-display text-lg font-semibold text-slate-900">
                     {count}
                   </span>
@@ -797,7 +833,7 @@ export function DashboardPage() {
               ))}
               {Object.keys(kpis.properties_by_type).length === 0 && (
                 <p className="text-sm text-slate-400">
-                  Aucune donnée disponible
+                  {t("dashboard.noData")}
                 </p>
               )}
             </div>
@@ -808,7 +844,7 @@ export function DashboardPage() {
             style={{ animationDelay: "400ms" }}
           >
             <h3 className="mb-4 font-display text-lg font-semibold text-slate-900">
-              Annonces par source
+              {t("dashboard.adsBySource")}
             </h3>
             <div className="space-y-3">
               {Object.entries(kpis.ads_by_source).map(([source, count]) => (
@@ -823,7 +859,7 @@ export function DashboardPage() {
               ))}
               {Object.keys(kpis.ads_by_source).length === 0 && (
                 <p className="text-sm text-slate-400">
-                  Aucune donnée disponible
+                  {t("dashboard.noData")}
                 </p>
               )}
             </div>
@@ -838,7 +874,7 @@ export function DashboardPage() {
         <div className="mb-6 flex items-center gap-2">
           <Archive className="h-5 w-5 text-violet-600" />
           <h2 className="font-display text-xl font-semibold text-slate-900">
-            Gestion des annonces
+            {t("dashboard.adsManagement")}
           </h2>
         </div>
 
@@ -847,7 +883,7 @@ export function DashboardPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Rechercher (nom, localisation, source...)"
+              placeholder={t("dashboard.searchPlaceholder")}
               value={archiveSearchTerm}
               onChange={(e) => handleArchiveSearchChange(e.target.value)}
               className="input-field w-full pl-9"
@@ -866,7 +902,7 @@ export function DashboardPage() {
               }`}
             >
               <Globe className="h-3.5 w-3.5" />
-              Toutes
+              {t("dashboard.all")}
             </button>
             <button
               type="button"
@@ -879,14 +915,14 @@ export function DashboardPage() {
               }`}
             >
               <ArchiveRestore className="h-3.5 w-3.5" />
-              Archivées uniquement
+              {t("dashboard.archivedOnly")}
             </button>
           </div>
         </div>
 
         <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Gouvernorat</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.governorate")}</label>
             <select
               className="input-field w-full"
               value={archiveFilters.city ?? ""}
@@ -894,7 +930,7 @@ export function DashboardPage() {
                 setArchiveFilters({ ...archiveFilters, city: e.target.value || undefined })
               }
             >
-              <option value="">Tous</option>
+              <option value="">{t("dashboard.filterAllM")}</option>
               {GOVERNORATE_NAMES.map((gov) => (
                 <option key={gov} value={gov}>
                   {gov}
@@ -904,7 +940,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Catégorie</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.category")}</label>
             <select
               className="input-field w-full"
               value={archiveFilters.subcategory ?? ""}
@@ -921,17 +957,17 @@ export function DashboardPage() {
                 });
               }}
             >
-              <option value="">Toutes</option>
-              <option value="apartment">Appartement</option>
-              <option value="house">Maison / Villa</option>
-              <option value="office">Bureau / Commerce</option>
-              <option value="studio">Studio / Chambre</option>
-              <option value="land">Terrain</option>
+              <option value="">{t("dashboard.filterAllF")}</option>
+              <option value="apartment">{t("dashboard.catApartment")}</option>
+              <option value="house">{t("dashboard.catHouse")}</option>
+              <option value="office">{t("dashboard.catOffice")}</option>
+              <option value="studio">{t("dashboard.catStudio")}</option>
+              <option value="land">{t("dashboard.catLand")}</option>
             </select>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Transaction</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.transaction")}</label>
             <select
               className="input-field w-full"
               value={archiveFilters.listingType ?? ""}
@@ -939,14 +975,14 @@ export function DashboardPage() {
                 setArchiveFilters({ ...archiveFilters, listingType: e.target.value || undefined })
               }
             >
-              <option value="">Toutes</option>
-              <option value="sale">À vendre</option>
-              <option value="rent">À louer</option>
+              <option value="">{t("dashboard.filterAllF")}</option>
+              <option value="sale">{t("dashboard.forSale")}</option>
+              <option value="rent">{t("dashboard.forRent")}</option>
             </select>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Prix Min (DT)</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.priceMin")}</label>
             <input
               type="number"
               className="input-field w-full"
@@ -963,7 +999,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Prix Max (DT)</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.priceMax")}</label>
             <input
               type="number"
               className="input-field w-full"
@@ -981,7 +1017,7 @@ export function DashboardPage() {
 
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-500">
-              Surface Min (m²)
+              {t("dashboard.areaMin")}
             </label>
             <input
               type="number"
@@ -1000,7 +1036,7 @@ export function DashboardPage() {
 
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-500">
-              Surface Max (m²)
+              {t("dashboard.areaMax")}
             </label>
             <input
               type="number"
@@ -1020,7 +1056,7 @@ export function DashboardPage() {
           {archiveFilters.subcategory && archiveFilters.subcategory !== "land" && (
             <div>
               <label className="mb-1.5 block text-xs font-medium text-slate-500">
-                Chambres (min)
+                {t("dashboard.bedroomsMin")}
               </label>
               <input
                 type="number"
@@ -1046,12 +1082,13 @@ export function DashboardPage() {
             className="mb-4 flex items-center gap-1 text-xs text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 px-2.5 py-1.5 rounded-lg"
           >
             <X className="h-3.5 w-3.5" />
-            Réinitialiser les filtres
+            {t("dashboard.resetFilters")}
           </button>
         )}
 
         <div className="dt-archive overflow-x-auto rounded-xl border border-slate-100">
           <DataTable
+            key={lang}
             ref={archiveTableRef}
             columns={archiveColumns}
             options={archiveTableOptions}
@@ -1076,7 +1113,7 @@ export function DashboardPage() {
         style={{ animationDelay: "450ms" }}
       >
         <h2 className="mb-6 font-display text-xl font-semibold text-slate-900">
-          Lancer un scrape
+          {t("dashboard.runScrapeTitle")}
         </h2>
 
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-b border-slate-100 py-4">
@@ -1086,17 +1123,17 @@ export function DashboardPage() {
             </div>
             <div>
               <p className="text-sm font-medium text-slate-700">
-                Scrape automatique
+                {t("dashboard.autoScrape")}
               </p>
-              <p className="text-xs text-slate-400">Chaque lundi à 00h00</p>
+              <p className="text-xs text-slate-400">{t("dashboard.everyMonday")}</p>
             </div>
           </div>
           <div className="flex flex-col sm:items-end">
             <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
-              Prochain scrape automatique dans
+              {t("dashboard.nextAutoScrape")}
             </span>
             <p className="font-mono text-xl font-bold text-brand-400">
-              {nextScrapeTime ? formatCountdown(timeLeft) : "Calcul en cours…"}
+              {nextScrapeTime ? formatCountdown(timeLeft) : t("dashboard.calculating")}
             </p>
           </div>
         </div>
@@ -1108,20 +1145,25 @@ export function DashboardPage() {
             disabled={scraping}
             className="btn-primary"
           >
-            {scraping ? (
+            {retraining ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-                Scrape en cours… ({scrapeDuration}s)
+                {t("dashboard.retraining")}
+              </>
+            ) : scraping ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                {t("dashboard.scrapingInProgress")} ({scrapeDuration}s)
               </>
             ) : (
               <>
                 <Download className="h-4 w-4" />
-                Démarrer le scrape
+                {t("dashboard.startScrape")}
               </>
             )}
           </button>
 
-          {scraping && (
+          {scraping && !retraining && (
             <button
               type="button"
               onClick={cancelScrape}
@@ -1131,12 +1173,12 @@ export function DashboardPage() {
               {cancelling ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Arrêt en cours…
+                  {t("dashboard.stopping")}
                 </>
               ) : (
                 <>
                   <Ban className="h-4 w-4" />
-                  Arrêter le scrape
+                  {t("dashboard.stopScrape")}
                 </>
               )}
             </button>
@@ -1150,18 +1192,17 @@ export function DashboardPage() {
         {scrapeCancelled && !scraping && (
           <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
             <Ban className="h-4 w-4 shrink-0" />
-            Scrape arrêté — les annonces déjà insérées avant l&apos;arrêt ont
-            été conservées en base.
+            {t("dashboard.scrapeCancelledMsg")}
           </div>
         )}
 
         {scraping && scrapeProgress && (
           <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4">
             <h4 className="mb-3 text-sm font-semibold text-slate-900">
-              Progression du scrape
+              {t("dashboard.scrapeProgress")}
             </h4>
             <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-              <span>Sources complétées</span>
+              <span>{t("dashboard.sourcesCompleted")}</span>
               <span>
                 {scrapeProgress.completed_sources}/
                 {scrapeProgress.total_sources}
@@ -1196,30 +1237,29 @@ export function DashboardPage() {
                       <div className="flex items-center gap-3 text-xs text-slate-500">
                         {progress.status === "running" && progress.phase && (
                           <span className="text-brand-400">
-                            Phase{" "}
-                            {PHASE_LABELS[progress.phase] ?? progress.phase}
+                            {t("dashboard.phase")} {phaseLabel(progress.phase)}
                             {progress.step
-                              ? ` — ${STEP_LABELS[progress.step] ?? progress.step}`
+                              ? ` — ${stepLabel(progress.step)}`
                               : ""}
                             {progress.step === "enriching" &&
                             progress.total_pages > 0
                               ? ` ${progress.pages_processed}/${progress.total_pages}`
                               : progress.step === "listing"
-                                ? ` (${progress.pages_processed} pages)`
+                                ? ` (${progress.pages_processed} ${t("dashboard.pagesSuffix")})`
                                 : ""}
                           </span>
                         )}
                         {progress.status === "completed" && (
-                          <span className="text-emerald-600">Terminé</span>
+                          <span className="text-emerald-600">{t("dashboard.done")}</span>
                         )}
                         {progress.status === "error" && (
-                          <span className="text-red-600">Erreur</span>
+                          <span className="text-red-600">{t("dashboard.error")}</span>
                         )}
                         {progress.status === "cancelled" && (
-                          <span className="text-amber-600">Annulé</span>
+                          <span className="text-amber-600">{t("dashboard.cancelled")}</span>
                         )}
                         {progress.status === "pending" && (
-                          <span className="text-slate-400">En attente</span>
+                          <span className="text-slate-400">{t("dashboard.pending")}</span>
                         )}
                       </div>
                     </div>
@@ -1239,7 +1279,7 @@ export function DashboardPage() {
                             }`}
                           >
                             <span className="font-medium">
-                              {PHASE_LABELS[phase]}
+                              {phaseLabel(phase)}
                             </span>
                             {phaseStatus === "completed" && stats && (
                               <span className="ml-1">
@@ -1247,7 +1287,7 @@ export function DashboardPage() {
                               </span>
                             )}
                             {phaseStatus === "running" && (
-                              <span className="ml-1">en cours…</span>
+                              <span className="ml-1">{t("dashboard.running")}</span>
                             )}
                           </div>
                         );
@@ -1264,19 +1304,19 @@ export function DashboardPage() {
           <div className="mt-6 overflow-x-auto rounded-xl border border-slate-100">
             {scrapeDuration > 0 && (
               <div className="bg-slate-50 px-4 py-3 text-sm text-slate-700 font-medium border-b border-slate-100">
-                Terminé en {scrapeDuration} secondes.
+                {t("dashboard.completedIn").replace("{n}", String(scrapeDuration))}
               </div>
             )}
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-400">
-                  <th className="px-4 py-3 font-medium">Source</th>
-                  <th className="px-4 py-3 font-medium">Phase</th>
-                  <th className="px-4 py-3 font-medium">Trouvées</th>
-                  <th className="px-4 py-3 font-medium">Insérées</th>
-                  <th className="px-4 py-3 font-medium">Déjà en base</th>
-                  <th className="px-4 py-3 font-medium">Erreurs</th>
-                  <th className="px-4 py-3 font-medium">Archivées</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.colSource")}</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.phase")}</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.found")}</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.inserted")}</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.alreadyInDb")}</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.errors")}</th>
+                  <th className="px-4 py-3 font-medium">{t("dashboard.archived")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1304,7 +1344,7 @@ export function DashboardPage() {
                         key={result.source}
                         className="border-t-2 border-slate-200 bg-slate-50 font-semibold last:border-b-0"
                       >
-                        <td className="px-4 py-3 text-slate-900">Total</td>
+                        <td className="px-4 py-3 text-slate-900">{t("dashboard.total")}</td>
                         <td className="px-4 py-3" />
                         <td className="px-4 py-3 text-slate-800">
                           {result.count ?? 0}
@@ -1335,7 +1375,7 @@ export function DashboardPage() {
                             >
                               <td className="px-4 py-2" />
                               <td className="px-4 py-2 text-slate-500">
-                                {PHASE_LABELS[phase] ?? phase}
+                                {phaseLabel(phase)}
                               </td>
                               <td className="px-4 py-2 text-slate-500">
                                 {stats.count}
@@ -1361,7 +1401,7 @@ export function DashboardPage() {
                         <td className="px-4 py-3 font-medium text-slate-900">
                           {sourceLabel(sourceKey)}
                         </td>
-                        <td className="px-4 py-3 text-slate-400">Total</td>
+                        <td className="px-4 py-3 text-slate-400">{t("dashboard.total")}</td>
                         <td className="px-4 py-3 text-slate-700">
                           {result.count}
                         </td>
@@ -1385,9 +1425,7 @@ export function DashboardPage() {
               </tbody>
             </table>
             <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
-              « Déjà en base » = annonce déjà enregistrée (même source + id).
-              Les doublons entre vente et location sont filtrés avant
-              l&apos;insertion.
+              {t("dashboard.alreadyInDbNote")}
             </p>
           </div>
         )}

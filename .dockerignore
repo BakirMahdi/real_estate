@@ -1,0 +1,41 @@
+# Backend image only needs requirements.txt + scraper/. Everything below is
+# excluded from the build context so `COPY . .` in the Dockerfile can't bake
+# secrets, git history, or unrelated project files into the image (Docker
+# image layers persist and are extractable even after a later layer appears
+# to remove something, so this must happen at the .dockerignore level, not
+# via a cleanup RUN step).
+
+.git
+.gitignore
+.env
+.env.*
+.claude
+
+# Frontend has its own build/Dockerfile; not needed in the backend image.
+frontend
+
+# Runtime-generated / host-mounted data - never baked into the image, always
+# provided via the docker-compose volumes instead.
+data
+models
+logs
+db/backups
+
+# DB schema files are mounted straight into the postgres container; the
+# backend doesn't read them.
+db
+
+# Docs, misc local artifacts.
+docs
+pgadmin
+README.md
+tayara_debug.html
+mubawab_debug.html
+
+# Python bytecode / caches.
+__pycache__
+**/__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.mypy_cache

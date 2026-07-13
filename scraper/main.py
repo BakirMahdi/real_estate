@@ -1,20 +1,30 @@
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Depends
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from .scrapers import tayara as tayara_scraper
 from .scrapers import mubawab as mubawab_scraper
 from .scrapers import expat as expat_scraper
 from .insert import bulk_insert_properties, bulk_get_latest_properties, is_same_property, get_active_ad_ids
 from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_admin, archive_property, unarchive_property
-from .db import get_conn
+from .db import db_cursor
 from .cancellation import ScrapeCancelled
 from .scrape_log import ScrapeLogger
-from .auth import create_user, authenticate_user, create_access_token, verify_token, verify_token as verify_jwt_token, is_admin
+from .auth import authenticate_user, create_access_token, verify_token, verify_token as verify_jwt_token, is_admin, verify_google_credential, get_or_create_google_user, ACCESS_TOKEN_EXPIRE_MINUTES, register_local_user, verify_email_code, refresh_verification_code
+from .email_util import send_verification_email
+from .ml.estimator import ModelNotTrained, estimate_property as ml_estimate_property
+from .agent.db_access import ensure_readonly_role
+from .agent.gemini_client import GeminiNotConfigured, GeminiUnavailable
+from .agent import conversation_store
+from .agent import service as agent_service
 from pydantic import BaseModel
 import asyncio
 import gc
+import re
 import threading
 import time
 import os
@@ -29,9 +39,37 @@ except Exception:
 
 app = FastAPI(title="Real Estate API", version="1.0.0")
 
+
+def _client_ip(request: Request) -> str:
+    """Real client IP for rate limiting, seen through nginx.
+
+    nginx forwards the browser's address in X-Forwarded-For / X-Real-IP; the
+    raw socket peer (request.client) is only the proxy container, so keying
+    limits on it would lump every user into one bucket.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.headers.get("x-real-ip") or get_remote_address(request)
+
+
+# Per-IP rate limiter (see the @limiter.limit decorators on auth/agent routes).
+limiter = Limiter(key_func=_client_ip)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Credentialed cookies require an explicit origin allowlist: the CORS spec
+# forbids "*" together with allow_credentials, and browsers drop the cookie.
+# Same-origin traffic (the nginx-proxied /api) doesn't need CORS at all; this
+# list is for any cross-origin dev server.
+_cors_origins = [
+    o.strip()
+    for o in os.environ.get("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,44 +78,111 @@ app.add_middleware(
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 security = HTTPBearer()
 
+# Login JWT is stored in this HttpOnly cookie so JavaScript (and therefore any
+# XSS) can't read it. secure=True (HTTPS-only) should be enabled in production
+# via COOKIE_SECURE=true; it's off by default so cookies work over plain-HTTP
+# localhost during development.
+AUTH_COOKIE_NAME = "access_token"
+COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "false").lower() == "true"
+
+
+def _token_from_request(request: Request) -> str | None:
+    """Pull the JWT from the Authorization header (API clients) or the
+    HttpOnly auth cookie (the browser app)."""
+    auth_header = request.headers.get("authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        return auth_header.split(" ")[1]
+    return request.cookies.get(AUTH_COOKIE_NAME)
+
+
+def _set_auth_cookie(response: Response, token: str) -> None:
+    # Session-length cookie: match the token's own expiry when one is
+    # configured, otherwise persist for 30 days (the app's default is a
+    # non-expiring token / "stay logged in").
+    max_age = ACCESS_TOKEN_EXPIRE_MINUTES * 60 if ACCESS_TOKEN_EXPIRE_MINUTES else 30 * 24 * 3600
+    response.set_cookie(
+        key=AUTH_COOKIE_NAME,
+        value=token,
+        max_age=max_age,
+        httponly=True,
+        samesite="lax",
+        secure=COOKIE_SECURE,
+        path="/",
+    )
+
 class UserRegister(BaseModel):
-    username: str
+    email: str
     password: str
 
+
+class EmailVerifyRequest(BaseModel):
+    email: str
+    code: str
+
+
+class ResendCodeRequest(BaseModel):
+    email: str
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+    property_id: int | None = None
+
+
+class GoogleAuthRequest(BaseModel):
+    credential: str
+
 class UserLogin(BaseModel):
-    username: str
+    email: str
     password: str
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Protect /scrape and /scrape/status (but not /properties/...)
+        # Protect /scrape and /scrape/status (but not /properties/...).
+        # Admin-only, same as every other /admin/* route - starting, cancelling,
+        # or watching a full multi-site scrape is not something a regular
+        # logged-in user should be able to do.
         if request.url.path.startswith("/scrape"):
             # Exclude OPTIONS for CORS preflight
             if request.method != "OPTIONS":
-                # Check for JWT token first, fall back to API key for backward compatibility
-                auth_header = request.headers.get("authorization")
-                if auth_header and auth_header.startswith("Bearer "):
-                    token = auth_header.split(" ")[1]
+                # Accept the JWT from the Authorization header or the HttpOnly
+                # auth cookie (the browser app now relies on the cookie).
+                token = _token_from_request(request)
+                if token:
                     payload = verify_token(token)
-                    if payload:
+                    if payload and payload.get("role") == "admin":
                         return await call_next(request)
 
                 # sendBeacon (used to auto-cancel on page close) cannot set
-                # headers, so also accept the JWT as a query parameter.
+                # headers; same-origin beacons carry the cookie automatically,
+                # but keep accepting the JWT as a query parameter for any
+                # non-browser caller.
                 query_token = request.query_params.get("token")
-                if query_token and verify_token(query_token):
-                    return await call_next(request)
+                if query_token:
+                    payload = verify_token(query_token)
+                    if payload and payload.get("role") == "admin":
+                        return await call_next(request)
 
-                # Fall back to API key
+                # Fall back to API key (also treated as admin-equivalent)
                 api_key = request.headers.get("x-api-key")
                 if api_key != ADMIN_PASSWORD:
                     return JSONResponse(
                         status_code=401,
-                        content={"detail": "Unauthorized: Invalid or missing token/API key"}
+                        content={"detail": "Unauthorized: admin role or API key required"}
                     )
         return await call_next(request)
 
 app.add_middleware(AuthMiddleware)
+
+
+@app.on_event("startup")
+def _ensure_agent_readonly_role():
+    """Create/repair the agent's read-only Postgres role (see agent/db_access.py)."""
+    try:
+        ensure_readonly_role()
+    except Exception as e:
+        print(f"Warning: could not set up agent_ro role ({e}); /agent/chat will fail until this is fixed.")
+
 
 @app.get("/")
 def home():
@@ -92,12 +197,9 @@ def health():
 @app.get("/health/db")
 def health_db():
     try:
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.fetchone()
-        cur.close()
-        conn.close()
+        with db_cursor() as cur:
+            cur.execute("SELECT 1")
+            cur.fetchone()
         return {"status": "ok", "database": "reachable"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database unavailable: {e}")
@@ -150,6 +252,10 @@ scrape_status_state = {
     "results": None,
     "error": None,
     "progress": _blank_progress(),
+    # Set while the price model is being retrained at the end of a scrape.
+    "training": False,
+    "training_error": None,
+    "model_metrics": None,
 }
 
 async def weekly_scheduler():
@@ -200,33 +306,27 @@ def archive_missing_ads(found_ad_ids, completed_sources):
         return {}
 
     try:
-        conn = get_conn()
-        cur = conn.cursor()
+        with db_cursor(commit=True) as cur:
+            # Get all non-archived ad_ids from DB
+            cur.execute("SELECT source, ad_id FROM properties WHERE archived = FALSE")
+            all_db_ads = {(row[0], row[1]) for row in cur.fetchall()}
 
-        # Get all non-archived ad_ids from DB
-        cur.execute("SELECT source, ad_id FROM properties WHERE archived = FALSE")
-        all_db_ads = {(row[0], row[1]) for row in cur.fetchall()}
+            # Find ads that should be archived (in DB but not in current scrape),
+            # restricted to sources that completed successfully this run.
+            to_archive = []
+            for source, ad_id in all_db_ads:
+                if source not in completed_sources:
+                    continue
+                if (source, ad_id) not in found_ad_ids:
+                    to_archive.append((source, ad_id))
 
-        # Find ads that should be archived (in DB but not in current scrape),
-        # restricted to sources that completed successfully this run.
-        to_archive = []
-        for source, ad_id in all_db_ads:
-            if source not in completed_sources:
-                continue
-            if (source, ad_id) not in found_ad_ids:
-                to_archive.append((source, ad_id))
-
-        # Archive them
-        if to_archive:
-            for source, ad_id in to_archive:
-                cur.execute(
-                    "UPDATE properties SET archived = TRUE WHERE source = %s AND ad_id = %s",
-                    (source, ad_id)
-                )
-            conn.commit()
-
-        cur.close()
-        conn.close()
+            # Archive them
+            if to_archive:
+                for source, ad_id in to_archive:
+                    cur.execute(
+                        "UPDATE properties SET archived = TRUE WHERE source = %s AND ad_id = %s",
+                        (source, ad_id)
+                    )
 
         # Count archived per source so each source's row shows its own total
         counts = {}
@@ -542,9 +642,39 @@ def _run_scrape_task(triggered_by="manual"):
         except Exception:
             pass
     finally:
-        scrape_status_state["is_scraping"] = False
         scrape_status_state["cancel_requested"] = False
         scrape_cancel_event.clear()
+        # Retrain the price model on the freshly-updated data whenever this run
+        # inserted new rows. This also covers a mid-scrape cancel: rows already
+        # committed before the stop are kept, so the model learns from them too.
+        # `is_scraping` stays True through training so the dashboard keeps
+        # polling and can show the retraining state.
+        if inserted_row_ids:
+            _retrain_price_model()
+        scrape_status_state["is_scraping"] = False
+
+
+def _retrain_price_model():
+    """Retrain the price model on current DB contents and refresh the cache.
+
+    Runs in the scrape background thread after insertion. Failures are recorded
+    in the scrape status (training_error) but never crash the scrape task.
+    """
+    scrape_status_state["training"] = True
+    scrape_status_state["training_error"] = None
+    try:
+        from .ml.train_price_model import train
+        from .ml import estimator
+
+        metrics = train()
+        estimator.reload_artifact()
+        scrape_status_state["model_metrics"] = metrics
+        print(f"[ML] Price model retrained after scrape: {metrics}")
+    except Exception as e:
+        scrape_status_state["training_error"] = str(e)
+        print(f"[ML] Price model retraining failed: {e}")
+    finally:
+        scrape_status_state["training"] = False
 
 
 @app.post("/scrape")
@@ -644,42 +774,221 @@ def property_detail(property_id: int):
     return property_data
 
 
+@app.get("/properties/{property_id}/estimate")
+def property_estimate(property_id: int):
+    """ML price estimate + investment score for one property (Module 6)."""
+    property_data = get_property_by_id(property_id)
+    if not property_data:
+        raise HTTPException(status_code=404, detail="Property not found")
+    try:
+        return ml_estimate_property(property_data)
+    except ModelNotTrained as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except Exception as e:
+        # A present-but-incompatible artifact (stale schema, sklearn version
+        # mismatch after a dependency bump) shouldn't crash the request with
+        # an opaque 500 - degrade the same way as "no model trained yet".
+        print(f"[ML] Estimate failed for property {property_id}: {type(e).__name__}: {e}")
+        raise HTTPException(status_code=503, detail="Price estimate is temporarily unavailable")
+
+
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def _issue_login(response: Response, user: dict) -> dict:
+    """Sign a JWT for `user`, set the auth cookie, and return the login body."""
+    access_token = create_access_token(
+        data={"sub": user["username"], "role": user["role"], "user_id": user["id"]}
+    )
+    _set_auth_cookie(response, access_token)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": user["role"],
+        "username": user["username"],
+    }
+
+
 @app.post("/register")
-def register(user: UserRegister):
-    if len(user.username) < 3:
-        raise HTTPException(status_code=400, detail="Username must be at least 3 characters")
+@limiter.limit("5/minute")
+def register(user: UserRegister, request: Request):
+    """Start local sign-up: create an unverified account and email a code.
+
+    The user is NOT logged in yet; they must confirm the code via
+    /auth/verify-email first.
+    """
+    email = _normalize_email(user.email)
+    if not _EMAIL_RE.match(email):
+        raise HTTPException(status_code=400, detail="A valid email address is required")
     if len(user.password) < 6:
         raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
-    
-    success = create_user(user.username, user.password)
-    if not success:
-        raise HTTPException(status_code=400, detail="Username already exists")
-    
-    return {"message": "User created successfully"}
+
+    status, code = register_local_user(email, user.password)
+    if status == "error":
+        raise HTTPException(status_code=500, detail="Could not create account")
+
+    # status == "exists" means a verified account already uses this email:
+    # there's no code to send, and the response below must stay identical to
+    # the new-signup case (same message, same status code) so this endpoint
+    # can't be used to enumerate which emails are already registered - the
+    # same anti-enumeration approach /auth/resend-code already uses below.
+    if status == "exists":
+        return {"message": "verification_sent", "email": email}
+
+    if code is None:
+        raise HTTPException(status_code=500, detail="Could not create account")
+
+    try:
+        send_verification_email(email, code)
+    except Exception as e:
+        print(f"Error sending verification email: {e}")
+        raise HTTPException(
+            status_code=502, detail="Could not send the verification email; please try again"
+        )
+
+    return {"message": "verification_sent", "email": email}
+
+
+@app.post("/auth/verify-email")
+@limiter.limit("10/minute")
+def verify_email(body: EmailVerifyRequest, request: Request, response: Response):
+    """Confirm the emailed code and log the user in (sets the auth cookie)."""
+    email = _normalize_email(body.email)
+    user = verify_email_code(email, body.code.strip())
+    if not user:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification code")
+    return _issue_login(response, user)
+
+
+@app.post("/auth/resend-code")
+@limiter.limit("3/minute")
+def resend_code(body: ResendCodeRequest, request: Request):
+    """Re-send a verification code for an account that isn't verified yet."""
+    email = _normalize_email(body.email)
+    code = refresh_verification_code(email)
+    # code is None when the account doesn't exist or is already verified. We
+    # return the same generic response either way so this endpoint can't be
+    # used to probe which emails are registered.
+    if code is not None:
+        try:
+            send_verification_email(email, code)
+        except Exception as e:
+            print(f"Error resending verification email: {e}")
+    return {"message": "If the account exists and is unverified, a new code was sent"}
 
 
 @app.post("/login")
-def login(user: UserLogin):
-    authenticated_user = authenticate_user(user.username, user.password)
+@limiter.limit("10/minute")
+def login(user: UserLogin, request: Request, response: Response):
+    authenticated_user = authenticate_user(_normalize_email(user.email), user.password)
     if not authenticated_user:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
-    
-    access_token = create_access_token(data={"sub": authenticated_user["username"], "role": authenticated_user["role"]})
-    return {"access_token": access_token, "token_type": "bearer", "role": authenticated_user["role"]}
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not authenticated_user.get("email_verified", False):
+        raise HTTPException(status_code=403, detail="Email not verified")
+
+    return _issue_login(response, authenticated_user)
+
+
+@app.post("/logout")
+def logout(response: Response):
+    """Clear the auth cookie. The frontend also drops its local UI state."""
+    response.delete_cookie(AUTH_COOKIE_NAME, path="/")
+    return {"message": "Logged out"}
+
+
+@app.get("/auth/config")
+def auth_config():
+    """Public auth config for the frontend (e.g. whether Google sign-in is enabled)."""
+    return {"google_client_id": os.environ.get("GOOGLE_CLIENT_ID", "")}
+
+
+@app.post("/auth/google")
+@limiter.limit("10/minute")
+def google_auth(body: GoogleAuthRequest, request: Request, response: Response):
+    """Exchange a Google ID token for our own JWT, creating the user if needed."""
+    info = verify_google_credential(body.credential)
+    if not info or not info.get("email"):
+        raise HTTPException(status_code=401, detail="Invalid or unverified Google credential")
+
+    user = get_or_create_google_user(info["email"])
+    if not user:
+        raise HTTPException(status_code=500, detail="Could not create user account")
+
+    access_token = create_access_token(
+        data={"sub": user["username"], "role": user["role"], "user_id": user["id"]}
+    )
+    _set_auth_cookie(response, access_token)
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": user["role"],
+        "username": user["username"],
+    }
 
 
 def get_current_user_role(request: Request):
-    """Extract and verify the user's role from the JWT token."""
-    auth_header = request.headers.get("authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
+    """Extract and verify the user's role from the JWT (header or cookie)."""
+    token = _token_from_request(request)
+    if not token:
         return None
-    
-    token = auth_header.split(" ")[1]
+
     payload = verify_token(token)
     if not payload:
         return None
-    
+
     return payload.get("role")
+
+
+def get_current_user(request: Request):
+    """Extract {id, username, role} from the JWT token, or None if absent/invalid.
+
+    Unlike get_current_user_role, this works for any authenticated user, not
+    just admins - used by the conversational agent endpoints, which any
+    logged-in visitor (not just admin) may call. The user id comes only from
+    the signed token, never from a client-supplied value, so a user can never
+    read or write another user's conversation (no IDOR).
+    """
+    token = _token_from_request(request)
+    if not token:
+        return None
+
+    payload = verify_token(token)
+    if not payload or "user_id" not in payload:
+        return None
+
+    return {"id": payload["user_id"], "username": payload.get("sub"), "role": payload.get("role")}
+
+
+@app.post("/agent/chat")
+@limiter.limit("20/minute")
+def agent_chat(body: AgentChatRequest, request: Request):
+    """Send a message to the conversational agent (Module 5). Any logged-in user."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    if not body.message.strip():
+        raise HTTPException(status_code=400, detail="Message cannot be empty")
+
+    try:
+        reply = agent_service.chat(user["id"], body.message, property_id=body.property_id)
+    except GeminiNotConfigured as e:
+        raise HTTPException(status_code=503, detail=str(e))
+    except GeminiUnavailable as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"reply": reply}
+
+
+@app.get("/agent/history")
+def agent_history(request: Request):
+    """This user's saved conversation with the agent, resumed across sessions."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    return {"messages": conversation_store.load_messages(user["id"])}
 
 
 @app.get("/admin/archive-search")
@@ -754,40 +1063,35 @@ def get_kpis(request: Request = None):
     if role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     
-    conn = get_conn()
-    cur = conn.cursor()
-    
-    # Properties per property type
-    cur.execute("""
-        SELECT property_type, COUNT(*) as count
-        FROM properties
-        WHERE archived = FALSE
-        GROUP BY property_type
-        ORDER BY count DESC
-    """)
-    properties_by_type = {row[0]: row[1] for row in cur.fetchall()}
-    
-    # Number of archived ads
-    cur.execute("SELECT COUNT(*) FROM properties WHERE archived = TRUE")
-    archived_count = cur.fetchone()[0]
-    
-    # Number of users registered (excluding admin)
-    cur.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
-    user_count = cur.fetchone()[0]
-    
-    # Number of ads scraped from each website
-    cur.execute("""
-        SELECT source, COUNT(*) as count
-        FROM properties
-        WHERE archived = FALSE
-        GROUP BY source
-        ORDER BY count DESC
-    """)
-    ads_by_source = {row[0]: row[1] for row in cur.fetchall()}
-    
-    cur.close()
-    conn.close()
-    
+    with db_cursor() as cur:
+        # Properties per property type
+        cur.execute("""
+            SELECT property_type, COUNT(*) as count
+            FROM properties
+            WHERE archived = FALSE
+            GROUP BY property_type
+            ORDER BY count DESC
+        """)
+        properties_by_type = {row[0]: row[1] for row in cur.fetchall()}
+
+        # Number of archived ads
+        cur.execute("SELECT COUNT(*) FROM properties WHERE archived = TRUE")
+        archived_count = cur.fetchone()[0]
+
+        # Number of users registered (excluding admin)
+        cur.execute("SELECT COUNT(*) FROM users WHERE role != 'admin'")
+        user_count = cur.fetchone()[0]
+
+        # Number of ads scraped from each website
+        cur.execute("""
+            SELECT source, COUNT(*) as count
+            FROM properties
+            WHERE archived = FALSE
+            GROUP BY source
+            ORDER BY count DESC
+        """)
+        ads_by_source = {row[0]: row[1] for row in cur.fetchall()}
+
     return {
         "properties_by_type": properties_by_type,
         "archived_count": archived_count,

@@ -1,5 +1,6 @@
 import { Search, SlidersHorizontal, X } from "lucide-react";
 import type { SearchFilters } from "../types/property";
+import { useLang } from "../lib/i18n";
 
 interface FilterBarProps {
   filters: SearchFilters;
@@ -9,6 +10,7 @@ interface FilterBarProps {
 }
 
 export function FilterBar({ filters, governorates, onChange, onReset }: FilterBarProps) {
+  const { t } = useLang();
   const set = (key: keyof SearchFilters, value: any) => {
     onChange({
       ...filters,
@@ -29,8 +31,8 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
           <input
             type="text"
-            className="input-field pl-10 pr-4 py-2.5 w-full bg-white border-slate-200 text-slate-900 placeholder-slate-400 rounded-xl focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/30"
-            placeholder="Rechercher par mot-clé (ex: piscine, vue mer, villa, Lac 2...)"
+            className="input-field pl-10 pr-4 py-2.5 w-full bg-white border-brand-200 text-slate-900 placeholder-slate-400 rounded-xl focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/30"
+            placeholder={t("filter.search")}
             value={filters.query ?? ""}
             onChange={(e) => set("query", e.target.value)}
           />
@@ -38,7 +40,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
         <div className="flex items-center justify-between gap-4 shrink-0">
           <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
             <SlidersHorizontal className="h-4 w-4 text-brand-400" />
-            Filtres
+            {t("filter.filters")}
           </div>
           {hasFilters && (
             <button
@@ -47,7 +49,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
               className="flex items-center gap-1 text-xs text-slate-400 transition hover:text-slate-600 hover:bg-slate-100 px-2.5 py-1.5 rounded-lg"
             >
               <X className="h-3.5 w-3.5" />
-              Réinitialiser
+              {t("filter.reset")}
             </button>
           )}
         </div>
@@ -56,13 +58,13 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
       {/* Filters Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Gouvernorat</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.governorate")}</label>
           <select
             className="input-field w-full"
             value={filters.city ?? ""}
             onChange={(e) => set("city", e.target.value)}
           >
-            <option value="">Tous</option>
+            <option value="">{t("filter.all")}</option>
             {governorates.map((gov) => (
               <option key={gov} value={gov}>
                 {gov}
@@ -72,7 +74,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Catégorie</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.category")}</label>
           <select
             className="input-field w-full"
             value={filters.subcategory ?? ""}
@@ -90,30 +92,30 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
               });
             }}
           >
-            <option value="">Toutes</option>
-            <option value="apartment">Appartement</option>
-            <option value="house">Maison / Villa</option>
-            <option value="office">Bureau / Commerce</option>
-            <option value="studio">Studio / Chambre</option>
-            <option value="land">Terrain</option>
+            <option value="">{t("filter.allF")}</option>
+            <option value="apartment">{t("cat.apartment")}</option>
+            <option value="house">{t("cat.house")}</option>
+            <option value="office">{t("cat.office")}</option>
+            <option value="studio">{t("cat.studio")}</option>
+            <option value="land">{t("cat.land")}</option>
           </select>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Transaction</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.transaction")}</label>
           <select
             className="input-field w-full"
             value={filters.listing_type ?? ""}
             onChange={(e) => set("listing_type", e.target.value)}
           >
-            <option value="">Toutes</option>
-            <option value="sale">À vendre</option>
-            <option value="rent">À louer</option>
+            <option value="">{t("filter.allF")}</option>
+            <option value="sale">{t("listing.sale")}</option>
+            <option value="rent">{t("listing.rent")}</option>
           </select>
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Prix Min (DT)</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.minPrice")}</label>
           <input
             type="number"
             className="input-field w-full"
@@ -125,7 +127,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Prix Max (DT)</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.maxPrice")}</label>
           <input
             type="number"
             className="input-field w-full"
@@ -137,7 +139,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Surface Min (m²)</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.minArea")}</label>
           <input
             type="number"
             className="input-field w-full"
@@ -149,7 +151,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
         </div>
 
         <div>
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Surface Max (m²)</label>
+          <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.maxArea")}</label>
           <input
             type="number"
             className="input-field w-full"
@@ -162,7 +164,7 @@ export function FilterBar({ filters, governorates, onChange, onReset }: FilterBa
 
         {filters.subcategory && filters.subcategory !== "land" && (
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Chambres (min)</label>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("filter.bedroomsMin")}</label>
             <input
               type="number"
               className="input-field w-full"

@@ -1,25 +1,57 @@
-import { Route, Routes } from "react-router-dom";
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { AgentChatWidget } from "./components/AgentChatWidget";
 import { Header } from "./components/Header";
+import { isAdmin, isAuthenticated } from "./api/client";
+import { useLang } from "./lib/i18n";
 import { DashboardPage } from "./pages/DashboardPage";
 import { HomePage } from "./pages/HomePage";
 import { LoginPage } from "./pages/LoginPage";
 import { PropertyPage } from "./pages/PropertyPage";
+import { WelcomePage } from "./pages/WelcomePage";
+
+// The dashboard is admin-only. A logged-out visitor or a regular user hitting
+// /dashboard directly is sent to the listings page rather than shown the page.
+function RequireAdmin({ children }: { children: ReactNode }) {
+  if (!isAuthenticated() || !isAdmin()) {
+    return <Navigate to="/annonces" replace />;
+  }
+  return <>{children}</>;
+}
 
 export default function App() {
+  const location = useLocation();
+  const { t } = useLang();
+  // The welcome and login pages are designed to fit the viewport, so the whole
+  // layout switches to a fixed-height, non-scrolling mode (and drops the
+  // footer) on those routes. Every other page keeps normal document scrolling.
+  const fitsViewport = location.pathname === "/" || location.pathname === "/login";
+
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className={`flex flex-col ${fitsViewport ? "h-screen overflow-hidden" : "min-h-screen"}`}>
       <Header />
-      <main className="flex-1">
+      <main className={fitsViewport ? "flex flex-1 overflow-hidden" : "flex-1"}>
         <Routes>
-          <Route path="/" element={<HomePage />} />
+          <Route path="/" element={<WelcomePage />} />
+          <Route path="/annonces" element={<HomePage />} />
           <Route path="/property/:id" element={<PropertyPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAdmin>
+                <DashboardPage />
+              </RequireAdmin>
+            }
+          />
           <Route path="/login" element={<LoginPage />} />
         </Routes>
       </main>
-      <footer className="border-t border-slate-100 py-6 text-center text-xs text-slate-400">
-        Rews — Agrégateur immobilier Tunisie
-      </footer>
+      {!fitsViewport && (
+        <footer className="border-t border-slate-100 py-6 text-center text-xs text-slate-400">
+          {t("footer.tagline")}
+        </footer>
+      )}
+      <AgentChatWidget />
     </div>
   );
 }

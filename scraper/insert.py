@@ -1,17 +1,14 @@
-from .db import get_conn
+from .db import get_conn, db_cursor
 from .governorate import resolve_governorate
 
 
 def property_exists(source, ad_id):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT id FROM properties WHERE source = %s AND ad_id = %s",
-        (source, ad_id),
-    )
-    result = cur.fetchone()
-    cur.close()
-    conn.close()
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT id FROM properties WHERE source = %s AND ad_id = %s",
+            (source, ad_id),
+        )
+        result = cur.fetchone()
     return result is not None
 
 
@@ -19,15 +16,12 @@ def bulk_get_existing_ids(source, ad_ids):
     """Return the set of ad_ids that already exist in the DB for the given source."""
     if not ad_ids:
         return set()
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT ad_id FROM properties WHERE source = %s AND ad_id = ANY(%s)",
-        (source, list(ad_ids)),
-    )
-    existing = {row[0] for row in cur.fetchall()}
-    cur.close()
-    conn.close()
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT ad_id FROM properties WHERE source = %s AND ad_id = ANY(%s)",
+            (source, list(ad_ids)),
+        )
+        existing = {row[0] for row in cur.fetchall()}
     return existing
 
 
@@ -38,15 +32,12 @@ def get_active_ad_ids(source):
     single biggest scrape speed-up on a re-run, since most listings are
     unchanged from the previous scrape.
     """
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT DISTINCT ad_id FROM properties WHERE source = %s AND archived = FALSE",
-        (source,),
-    )
-    ids = {row[0] for row in cur.fetchall()}
-    cur.close()
-    conn.close()
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT DISTINCT ad_id FROM properties WHERE source = %s AND archived = FALSE",
+            (source,),
+        )
+        ids = {row[0] for row in cur.fetchall()}
     return ids
 
 
@@ -54,28 +45,25 @@ def bulk_get_latest_properties(source, ad_ids):
     """Return a dict mapping ad_id to its latest property row dict in the DB."""
     if not ad_ids:
         return {}
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        """
-        SELECT DISTINCT ON (source, ad_id)
-            ad_id, property_type, listing_type, title, description, price, area,
-            city, address, url, bedrooms, garage, furnished, terrace, pool,
-            subcategory, images
-        FROM properties
-        WHERE source = %s AND ad_id = ANY(%s)
-        ORDER BY source, ad_id, id DESC
-        """,
-        (source, list(ad_ids)),
-    )
-    rows = cur.fetchall()
-    latest_by_id = {}
-    for row in rows:
-        desc = cur.description
-        row_dict = {desc[idx][0]: row[idx] for idx in range(len(desc))}
-        latest_by_id[row_dict["ad_id"]] = row_dict
-    cur.close()
-    conn.close()
+    with db_cursor() as cur:
+        cur.execute(
+            """
+            SELECT DISTINCT ON (source, ad_id)
+                ad_id, property_type, listing_type, title, description, price, area,
+                city, address, url, bedrooms, garage, furnished, terrace, pool,
+                subcategory, images
+            FROM properties
+            WHERE source = %s AND ad_id = ANY(%s)
+            ORDER BY source, ad_id, id DESC
+            """,
+            (source, list(ad_ids)),
+        )
+        rows = cur.fetchall()
+        latest_by_id = {}
+        for row in rows:
+            desc = cur.description
+            row_dict = {desc[idx][0]: row[idx] for idx in range(len(desc))}
+            latest_by_id[row_dict["ad_id"]] = row_dict
     return latest_by_id
 
 
@@ -127,14 +115,15 @@ def is_same_property(scraped, latest_db):
     if get_int(scraped.get("area")) != get_int(latest_db.get("area")):
         return False
 
-    # Compare type-specific options (only relevant if house)
-    is_house_scraped = (scraped.get("type") or scraped.get("property_type")) == "house"
-    is_house_db = latest_db.get("property_type") == "house"
+    # Compare type-specific options (bedrooms/amenities apply to every
+    # non-land property - house, apartment, studio, office - not just "house").
+    is_land_scraped = (scraped.get("type") or scraped.get("property_type")) == "land"
+    is_land_db = latest_db.get("property_type") == "land"
 
-    if is_house_scraped != is_house_db:
+    if is_land_scraped != is_land_db:
         return False
 
-    if is_house_scraped:
+    if not is_land_scraped:
         if get_int(scraped.get("bedrooms")) != get_int(latest_db.get("bedrooms")):
             return False
 
@@ -159,7 +148,9 @@ def is_same_property(scraped, latest_db):
 
 
 def _type_specific_values(data):
-    if data["type"] == "house":
+    # Bedrooms/garage/furnished/terrace/pool apply to every non-land property
+    # (house, apartment, studio, office) - only land has none of these.
+    if data["type"] != "land":
         return (
             data.get("bedrooms"),
             data.get("garage"),
@@ -178,40 +169,34 @@ def _type_specific_values(data):
 
 
 def insert_property(data):
-    conn = get_conn()
-    cur = conn.cursor()
-
     house_land_values = _type_specific_values(data)
 
-    cur.execute("""
-        INSERT INTO properties (
-            source, ad_id, property_type, listing_type,
-            title, description, price, area, city, address, governorate, url,
-            bedrooms, garage, furnished, terrace, pool,
-            subcategory, images
-        )
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    """, (
-        data["source"],
-        data["ad_id"],
-        data["type"],
-        data["listing_type"],
-        data["title"],
-        data["description"],
-        data["price"],
-        data["area"],
-        data["city"],
-        data["address"],
-        resolve_governorate(data.get("city"), data.get("address")),
-        data["url"],
-        *house_land_values,
-        data.get("subcategory"),
-        data.get("images", []),
-    ))
-
-    conn.commit()
-    cur.close()
-    conn.close()
+    with db_cursor(commit=True) as cur:
+        cur.execute("""
+            INSERT INTO properties (
+                source, ad_id, property_type, listing_type,
+                title, description, price, area, city, address, governorate, url,
+                bedrooms, garage, furnished, terrace, pool,
+                subcategory, images
+            )
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            data["source"],
+            data["ad_id"],
+            data["type"],
+            data["listing_type"],
+            data["title"],
+            data["description"],
+            data["price"],
+            data["area"],
+            data["city"],
+            data["address"],
+            resolve_governorate(data.get("city"), data.get("address")),
+            data["url"],
+            *house_land_values,
+            data.get("subcategory"),
+            data.get("images", []),
+        ))
 
 
 def bulk_insert_properties(items):

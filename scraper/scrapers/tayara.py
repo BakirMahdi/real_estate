@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from ..cancellation import raise_if_cancelled
+from ..classify import canonical_property_type
 from ..http_client import get_session
 
 import os
@@ -219,8 +220,26 @@ def determine_property_type(ad):
     return "land" if any(keyword in text for keyword in land_keywords) else "house"
 
 
+def _listing_type_from_params(ad_params):
+    """Read the authoritative rent/sale from an ad's detail "adParams".
+
+    The detail page carries a structured {"label": "Type de transaction",
+    "value": "À Vendre"|"À Louer"} attribute — the only reliable rent/sale
+    signal now that the category URLs no longer separate them. Returns
+    "sale"/"rent", or None if the attribute is absent.
+    """
+    for param in ad_params or []:
+        if clean_text(param.get("label", "")).lower() == "type de transaction":
+            value = clean_text(param.get("value", "")).lower()
+            if "vendre" in value or "vente" in value:
+                return "sale"
+            if "louer" in value or "location" in value:
+                return "rent"
+    return None
+
+
 def scrape_detail_page(url):
-    """Fetch the Tayara item page for all images and the full description."""
+    """Fetch the Tayara item page: images, full description, and rent/sale type."""
     try:
         response = get_session().get(url, headers=_HEADERS, timeout=20)
         response.raise_for_status()
@@ -228,16 +247,17 @@ def scrape_detail_page(url):
         next_data = soup.find("script", id="__NEXT_DATA__")
 
         if not next_data:
-            return [], ""
+            return [], "", None
 
         page_props = json.loads(next_data.string).get("props", {}).get("pageProps", {})
         ad_details = page_props.get("adDetails") or {}
         images = list(ad_details.get("images") or [])
         description = clean_text(ad_details.get("description"))
-        return images, description
+        listing_type = _listing_type_from_params(ad_details.get("adParams"))
+        return images, description, listing_type
     except Exception as e:
         print(f"DEBUG: Failed to scrape Tayara detail page {url}: {e}")
-        return [], ""
+        return [], "", None
 
 
 def enrich_from_detail(data):
@@ -248,14 +268,13 @@ def enrich_from_detail(data):
 
     listing_images = data.get("images") or []
     listing_description = data.get("description") or ""
-    if (
-        len(listing_images) >= 2
-        and len(listing_description) >= 300
-        and not _is_truncated(listing_description)
-    ):
-        return data
 
-    detail_images, full_description = scrape_detail_page(url)
+    detail_images, full_description, detail_listing_type = scrape_detail_page(url)
+
+    # Authoritative rent/sale from the detail page overrides the provisional
+    # (feed/keyword) guess — see _listing_type_from_params.
+    if detail_listing_type:
+        data["listing_type"] = detail_listing_type
 
     if len(detail_images) > len(listing_images):
         data["images"] = detail_images
@@ -297,6 +316,9 @@ def extract_listing(ad, default_listing_type="sale"):
     subcategory = subcat_mapping.get(subcat_id)
     if not subcategory:
         subcategory = "land" if property_type == "land" else "house"
+    # Unify into one correct fine-grained category (tayara's metadata subCategory
+    # is a strong signal), so property_type is no longer collapsed to house/land.
+    property_type = subcategory = canonical_property_type(property_type, subcategory)
 
     data = {
         "source": SOURCE,
@@ -319,7 +341,7 @@ def extract_listing(ad, default_listing_type="sale"):
         "images": list(ad.get("images") or []),
     }
 
-    if property_type == "house":
+    if property_type != "land":
         bedrooms = parse_rooms(description, title)
         data.update({
             "bedrooms": bedrooms,
@@ -427,12 +449,10 @@ def _collect_candidates(phase, listing_type, base_url, seen_ad_ids, max_pages=MA
 
 def _enrich_candidates(phase, candidates, progress_callback=None, cancel_event=None):
     """Fetch detail pages for candidates that are missing images/description."""
-    needs_enrichment = [
-        d for d in candidates
-        if len(d.get("images") or []) < 2
-        or len(d.get("description") or "") < 300
-        or _is_truncated(d.get("description"))
-    ]
+    # Every new ad is detail-fetched now: the listing feed no longer carries the
+    # transaction type (rent/sale), so it must be read from each ad's detail page.
+    # The fetch also fills in images/description along the way.
+    needs_enrichment = list(candidates)
     total_to_enrich = len(needs_enrichment)
     enriched_map = {}
     if needs_enrichment:
@@ -453,7 +473,10 @@ def _enrich_candidates(phase, candidates, progress_callback=None, cancel_event=N
 def _split_known(candidates, known_ad_ids):
     """Split candidates into already-in-DB markers and to-be-enriched new ones."""
     known = [
-        {"source": SOURCE, "ad_id": d["ad_id"], "_known": True}
+        # Carry type/listing_type so known markers can still be routed to the
+        # right display phase (they're never re-inserted, so these are hints).
+        {"source": SOURCE, "ad_id": d["ad_id"], "_known": True,
+         "type": d.get("type"), "listing_type": d.get("listing_type")}
         for d in candidates if d["ad_id"] in known_ad_ids
     ]
     new = [d for d in candidates if d["ad_id"] not in known_ad_ids]
@@ -472,24 +495,35 @@ def iter_scrape_phases(max_pages=MAX_PAGES, progress_callback=None, cancel_event
     """
     known_ad_ids = known_ad_ids or set()
     seen_ad_ids = set()
-    held_land = []
 
-    for listing_type, base_url in LISTING_CATEGORIES:
-        candidates = _collect_candidates(
-            listing_type, listing_type, base_url, seen_ad_ids,
-            max_pages=max_pages, progress_callback=progress_callback, cancel_event=cancel_event,
-        )
-        non_land = [d for d in candidates if d["type"] != "land"]
-        held_land.extend(d for d in candidates if d["type"] == "land")
-        known, new = _split_known(non_land, known_ad_ids)
-        listings = known + _enrich_candidates(listing_type, new, progress_callback, cancel_event)
-        print(f"DEBUG: Tayara {listing_type} phase: {len(listings)} listings ({len(known)} known).")
-        yield listing_type, listings
+    # Tayara's /a-louer/ and /a-vendre/ category URLs stopped filtering by
+    # transaction type -- both now return the same mixed feed -- so crawling both
+    # just deduped the second to nothing (that's why "Vente" showed 0). Crawl the
+    # feed once; the real rent/sale comes from each ad's detail page
+    # ("Type de transaction"), applied during enrichment. Land is split off by
+    # property_type. Progress is reported under a real phase name ("rent") since
+    # the callback only knows the three fixed phases.
+    _, feed_url = LISTING_CATEGORIES[0]
+    candidates = _collect_candidates(
+        "rent", "sale", feed_url, seen_ad_ids,
+        max_pages=max_pages, progress_callback=progress_callback, cancel_event=cancel_event,
+    )
+    known, new = _split_known(candidates, known_ad_ids)
+    all_items = known + _enrich_candidates("rent", new, progress_callback, cancel_event)
 
-    known, new = _split_known(held_land, known_ad_ids)
-    land_listings = known + _enrich_candidates("land", new, progress_callback, cancel_event)
-    print(f"DEBUG: Tayara land phase: {len(land_listings)} listings ({len(known)} known).")
-    yield "land", land_listings
+    def phase_of(item):
+        if item.get("type") == "land":
+            return "land"
+        lt = item.get("listing_type")
+        return lt if lt in ("rent", "sale") else "sale"
+
+    buckets = {"rent": [], "sale": [], "land": []}
+    for item in all_items:
+        buckets[phase_of(item)].append(item)
+
+    for phase in ("rent", "sale", "land"):
+        print(f"DEBUG: Tayara {phase} phase: {len(buckets[phase])} listings.")
+        yield phase, buckets[phase]
 
 
 def scrape_tayara(max_pages=MAX_PAGES, progress_callback=None, cancel_event=None, known_ad_ids=None):

@@ -17,3 +17,5 @@ frontend/certs/*.crt
 tayara_debug.html
 mubawab_debug.html
 db/backups/
+models/
+data/

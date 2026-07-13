@@ -5,6 +5,7 @@ import { api } from "../api/client";
 import type { Property } from "../types/property";
 import { calculatePurchasingCapacity, simulateCredit } from "../lib/creditSimulator";
 import { formatArea, formatPrice, governorateOf, sourceLabel } from "../lib/format";
+import { useLang } from "../lib/i18n";
 
 function formatTND(value: number): string {
   return formatPrice(Math.round(value));
@@ -19,6 +20,7 @@ export function CreditSimulatorModal({
   property: Property;
   onClose: () => void;
 }) {
+  const { t } = useLang();
   const defaultPrice = property.price ?? 0;
   const [propertyPrice, setPropertyPrice] = useState(defaultPrice);
   const [downPayment, setDownPayment] = useState<number | "">("");
@@ -131,7 +133,7 @@ export function CreditSimulatorModal({
             </div>
             <div>
               <h2 className="font-display text-lg font-semibold text-slate-900">
-                Simulateur de crédit
+                {t("sim.title")}
               </h2>
               <p className="text-xs text-slate-400">{property.title}</p>
             </div>
@@ -139,7 +141,7 @@ export function CreditSimulatorModal({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fermer"
+            aria-label={t("sim.close")}
             className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
           >
             <X className="h-5 w-5" />
@@ -149,7 +151,7 @@ export function CreditSimulatorModal({
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">
-              Prix du bien (TND)
+              {t("sim.price")}
             </span>
             <input
               type="number"
@@ -162,14 +164,14 @@ export function CreditSimulatorModal({
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">
-              Apport personnel (TND) <span className="text-red-500">*</span>
+              {t("sim.down")} <span className="text-red-500">*</span>
             </span>
             <input
               type="number"
               min={0}
               required
               className="input-field"
-              placeholder="Requis pour la simulation"
+              placeholder={t("sim.requiredPh")}
               value={downPayment}
               onChange={(e) =>
                 setDownPayment(e.target.value === "" ? "" : Number(e.target.value) || 0)
@@ -179,7 +181,7 @@ export function CreditSimulatorModal({
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">
-              Durée du prêt (années) <span className="text-red-500">*</span>
+              {t("sim.years")} <span className="text-red-500">*</span>
             </span>
             <input
               type="number"
@@ -187,7 +189,7 @@ export function CreditSimulatorModal({
               max={30}
               required
               className="input-field"
-              placeholder="Requis pour la simulation"
+              placeholder={t("sim.requiredPh")}
               value={years}
               onChange={(e) =>
                 setYears(e.target.value === "" ? "" : Number(e.target.value) || 0)
@@ -197,14 +199,14 @@ export function CreditSimulatorModal({
 
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-slate-500">
-              Revenu mensuel net (TND) <span className="text-red-500">*</span>
+              {t("sim.income")} <span className="text-red-500">*</span>
             </span>
             <input
               type="number"
               min={0}
               required
               className="input-field"
-              placeholder="Requis pour la simulation"
+              placeholder={t("sim.requiredPh")}
               value={monthlyIncome}
               onChange={(e) =>
                 setMonthlyIncome(e.target.value === "" ? "" : Number(e.target.value) || 0)
@@ -215,42 +217,41 @@ export function CreditSimulatorModal({
 
         {!canSimulate && (
           <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-700">
-            Veuillez renseigner l'apport personnel, la durée du prêt et votre revenu mensuel net
-            pour lancer la simulation.
+            {t("sim.fillIn")}
           </p>
         )}
 
         {result != null && (
           <div className="mt-6 rounded-xl border border-slate-100 bg-white p-5">
-            <p className="text-xs text-slate-400">Mensualité estimée</p>
+            <p className="text-xs text-slate-400">{t("sim.monthly")}</p>
             <p className="font-display text-3xl font-extrabold text-brand-400">
               {formatTND(result.monthlyPayment)}
-              <span className="ml-1 text-base font-medium text-slate-400">/ mois</span>
+              <span className="ml-1 text-base font-medium text-slate-400">{t("sim.perMonth")}</span>
             </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div>
-                <p className="text-xs text-slate-400">Montant emprunté</p>
+                <p className="text-xs text-slate-400">{t("sim.loanAmount")}</p>
                 <p className="font-medium text-slate-900">{formatTND(result.loanAmount)}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-400">Coût total du crédit</p>
+                <p className="text-xs text-slate-400">{t("sim.totalInterest")}</p>
                 <p className="font-medium text-slate-900">{formatTND(result.totalInterest)}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-400">Total remboursé</p>
+                <p className="text-xs text-slate-400">{t("sim.totalPaid")}</p>
                 <p className="font-medium text-slate-900">{formatTND(result.totalPaid)}</p>
               </div>
             </div>
 
             {result.debtToIncomeRatio != null && (
               <p className={`mt-4 text-sm font-medium ${ratioColor}`}>
-                Taux d'endettement : {(result.debtToIncomeRatio * 100).toFixed(1)}%
+                {t("sim.dti")} : {(result.debtToIncomeRatio * 100).toFixed(1)}%
                 {result.debtToIncomeRatio > 0.5
-                  ? " — largement au-dessus du seuil recommandé (35%)"
+                  ? t("sim.dtiHigh")
                   : result.debtToIncomeRatio > 0.35
-                    ? " — au-dessus du seuil recommandé (35%)"
-                    : " — dans la limite recommandée"}
+                    ? t("sim.dtiAbove")
+                    : t("sim.dtiOk")}
               </p>
             )}
           </div>
@@ -258,34 +259,34 @@ export function CreditSimulatorModal({
 
         {capacity != null && (
           <div className="mt-4 rounded-xl border border-slate-100 bg-white p-5">
-            <p className="text-xs text-slate-400">Capacité d'achat estimée</p>
+            <p className="text-xs text-slate-400">{t("sim.capacity")}</p>
             <p className="font-display text-2xl font-bold text-slate-900">
               {formatTND(capacity.maxAffordablePrice)}
             </p>
             <p className="mt-1 text-xs text-slate-400">
-              Basée sur une mensualité maximale recommandée de {formatTND(capacity.maxMonthlyPayment)}
-              {" "}(35% de votre revenu), apport personnel inclus.
+              {t("sim.capacityNote1")} {formatTND(capacity.maxMonthlyPayment)}{" "}
+              {t("sim.capacityNote2")}
             </p>
 
             {exceedsCapacity && (
               <div className="mt-4 border-t border-slate-100 pt-4">
                 <p className="flex items-center gap-2 text-sm font-medium text-amber-600">
                   <TriangleAlert className="h-4 w-4 shrink-0" />
-                  Ce bien dépasse votre capacité d'achat de{" "}
+                  {t("sim.exceeds")}{" "}
                   {formatTND(propertyPrice - capacity.maxAffordablePrice)}.
                 </p>
 
                 {loadingAlternatives && (
                   <p className="mt-3 flex items-center gap-2 text-sm text-slate-400">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Recherche de biens plus adaptés à votre budget…
+                    {t("sim.searching")}
                   </p>
                 )}
 
                 {!loadingAlternatives && alternatives != null && alternatives.length > 0 && (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs font-medium text-slate-500">
-                      Alternatives dans votre budget
+                      {t("sim.alternatives")}
                     </p>
                     {alternatives.map((alt) => (
                       <Link
@@ -309,7 +310,7 @@ export function CreditSimulatorModal({
 
                 {!loadingAlternatives && alternatives != null && alternatives.length === 0 && (
                   <p className="mt-3 text-sm text-slate-400">
-                    Aucun bien similaire trouvé dans votre budget pour le moment.
+                    {t("sim.noAlternatives")}
                   </p>
                 )}
               </div>
@@ -317,10 +318,7 @@ export function CreditSimulatorModal({
           </div>
         )}
 
-        <p className="mt-4 text-xs text-slate-400">
-          Estimation indicative, hors assurance et frais de dossier. Ne constitue pas une offre de
-          prêt.
-        </p>
+        <p className="mt-4 text-xs text-slate-400">{t("sim.disclaimer")}</p>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-from .db import get_conn
+from .db import db_cursor
 
 
 def _row_to_dict(cursor, row):
@@ -29,6 +29,17 @@ _PROPERTY_COLUMNS = """
     archived
 """
 
+# A listing is versioned: a re-scrape that finds a changed field inserts a new
+# row with the same (source, ad_id) rather than updating in place, so the
+# same ad can have several rows. Every query that lists/counts properties
+# must read through this "latest version only" view instead of the raw table,
+# or edited listings show up twice (once per version).
+_LATEST_PROPERTIES = """
+    (SELECT DISTINCT ON (source, ad_id) *
+     FROM properties
+     ORDER BY source, ad_id, id DESC) properties
+"""
+
 
 def get_properties(
     city=None,
@@ -46,16 +57,9 @@ def get_properties(
     include_archived=False,
     archived_only=False,
 ):
-    conn = get_conn()
-    cur = conn.cursor()
-
     sql = f"""
         SELECT {_PROPERTY_COLUMNS}, COUNT(*) OVER() as total_count
-        FROM (
-            SELECT DISTINCT ON (source, ad_id) *
-            FROM properties
-            ORDER BY source, ad_id, id DESC
-        ) properties
+        FROM {_LATEST_PROPERTIES}
         WHERE 1=1
     """
     params = []
@@ -101,49 +105,43 @@ def get_properties(
     sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
 
-    cur.execute(sql, tuple(params))
-    rows = cur.fetchall()
-    
-    total_count = 0
-    properties = []
-    if rows:
-        raw_properties = [_row_to_dict(cur, row) for row in rows]
-        total_count = raw_properties[0]["total_count"]
-        for p in raw_properties:
-            p.pop("total_count", None)
-        properties = raw_properties
+    with db_cursor() as cur:
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall()
 
-    cur.close()
-    conn.close()
+        total_count = 0
+        properties = []
+        if rows:
+            raw_properties = [_row_to_dict(cur, row) for row in rows]
+            total_count = raw_properties[0]["total_count"]
+            for p in raw_properties:
+                p.pop("total_count", None)
+            properties = raw_properties
+
     return properties, total_count
 
 
 def get_property_by_id(property_id):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        f"""
-        SELECT {_PROPERTY_COLUMNS}
-        FROM properties
-        WHERE id = %s
-        """,
-        (property_id,),
-    )
-    row = cur.fetchone()
-    result = _row_to_dict(cur, row) if row else None
+    with db_cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {_PROPERTY_COLUMNS}
+            FROM properties
+            WHERE id = %s
+            """,
+            (property_id,),
+        )
+        row = cur.fetchone()
+        result = _row_to_dict(cur, row) if row else None
 
-    cur.close()
-    conn.close()
     return result
 
 
 def get_all_properties(include_archived=False):
-    conn = get_conn()
-    cur = conn.cursor()
-    
-    if include_archived:
+    where = "" if include_archived else "WHERE archived = FALSE"
+    with db_cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT
                 id,
                 source,
@@ -161,41 +159,14 @@ def get_all_properties(include_archived=False):
                 subcategory,
                 images,
                 archived
-            FROM properties
+            FROM {_LATEST_PROPERTIES}
+            {where}
             ORDER BY id
             """
         )
-    else:
-        cur.execute(
-            """
-            SELECT
-                id,
-                source,
-                ad_id,
-                property_type,
-                listing_type,
-                title,
-                description,
-                price,
-                area,
-                city,
-                address,
-                governorate,
-                url,
-                subcategory,
-                images,
-                archived
-            FROM properties
-            WHERE archived = FALSE
-            ORDER BY id
-            """
-        )
-    
-    rows = cur.fetchall()
-    properties = [_row_to_dict(cur, row) for row in rows]
+        rows = cur.fetchall()
+        properties = [_row_to_dict(cur, row) for row in rows]
 
-    cur.close()
-    conn.close()
     return properties
 
 
@@ -247,9 +218,6 @@ def search_properties_admin(
         the page count
       - items: the current page of properties
     """
-    conn = get_conn()
-    cur = conn.cursor()
-
     sort_col = _ADMIN_SORT_COLUMNS.get(sort_by, "id")
     sort_dir = "ASC" if str(sort_dir).lower() == "asc" else "DESC"
 
@@ -300,52 +268,42 @@ def search_properties_admin(
         search_params.append(bedrooms)
     search_where = " AND ".join(search_conditions) if search_conditions else "TRUE"
 
-    cur.execute(f"SELECT count(*) FROM properties WHERE {base_where}")
-    total = cur.fetchone()[0]
+    with db_cursor() as cur:
+        cur.execute(f"SELECT count(*) FROM {_LATEST_PROPERTIES} WHERE {base_where}")
+        total = cur.fetchone()[0]
 
-    cur.execute(f"SELECT count(*) FROM properties WHERE {search_where}", search_params)
-    total_filtered = cur.fetchone()[0]
+        cur.execute(f"SELECT count(*) FROM {_LATEST_PROPERTIES} WHERE {search_where}", search_params)
+        total_filtered = cur.fetchone()[0]
 
-    cur.execute(
-        f"""
-        SELECT {_PROPERTY_COLUMNS}
-        FROM properties
-        WHERE {search_where}
-        ORDER BY {sort_col} {sort_dir} NULLS LAST, id DESC
-        LIMIT %s OFFSET %s
-        """,
-        (*search_params, limit, offset),
-    )
+        cur.execute(
+            f"""
+            SELECT {_PROPERTY_COLUMNS}
+            FROM {_LATEST_PROPERTIES}
+            WHERE {search_where}
+            ORDER BY {sort_col} {sort_dir} NULLS LAST, id DESC
+            LIMIT %s OFFSET %s
+            """,
+            (*search_params, limit, offset),
+        )
+        rows = cur.fetchall()
+        properties = [_row_to_dict(cur, row) for row in rows]
 
-    rows = cur.fetchall()
-    properties = [_row_to_dict(cur, row) for row in rows]
-
-    cur.close()
-    conn.close()
     return {"total": total, "total_filtered": total_filtered, "items": properties}
 
 
 def archive_property(property_id):
     """Archive a property by ID. Admin only."""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE properties SET archived = TRUE WHERE id = %s",
-        (property_id,)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE properties SET archived = TRUE WHERE id = %s",
+            (property_id,)
+        )
 
 
 def unarchive_property(property_id):
     """Unarchive a property by ID. Admin only."""
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "UPDATE properties SET archived = FALSE WHERE id = %s",
-        (property_id,)
-    )
-    conn.commit()
-    cur.close()
-    conn.close()
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "UPDATE properties SET archived = FALSE WHERE id = %s",
+            (property_id,)
+        )

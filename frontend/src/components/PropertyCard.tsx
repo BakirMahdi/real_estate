@@ -11,6 +11,7 @@ import {
   subcategoryLabel,
   truncate,
 } from "../lib/format";
+import { useLang } from "../lib/i18n";
 
 interface PropertyCardProps {
   property: Property;
@@ -18,11 +19,12 @@ interface PropertyCardProps {
 }
 
 export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
+  const { t } = useLang();
   const gradient = propertyGradient(property.id);
   const mainImage = property.images && property.images.length > 0 ? property.images[0] : null;
 
   return (
-    <div className="group block animate-slide-up overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
+    <div className="group block animate-slide-up overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       <Link to={`/property/${property.id}`} className="block">
@@ -82,14 +84,14 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
             {property.bedrooms != null && property.property_type === "house" && (
               <span className="flex items-center gap-1">
                 <BedDouble className="h-3.5 w-3.5" />
-                {property.bedrooms} ch.
+                {property.bedrooms} {t("card.bedroomsAbbr")}
               </span>
             )}
           </div>
 
           <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
             <span className="text-sm font-medium text-brand-400 transition group-hover:text-slate-900">
-              Voir détails
+              {t("card.viewDetails")}
             </span>
             <ArrowUpRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-slate-900" />
           </div>

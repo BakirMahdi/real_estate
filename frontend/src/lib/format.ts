@@ -1,6 +1,8 @@
+import { getLang, t } from "./i18n";
+
 export function formatPrice(price: number | null | undefined): string {
-  if (price == null || price === 0) return "Prix sur demande";
-  return new Intl.NumberFormat("fr-TN", {
+  if (price == null || price === 0) return t("format.priceOnRequest");
+  return new Intl.NumberFormat(getLang() === "fr" ? "fr-TN" : "en-TN", {
     style: "currency",
     currency: "TND",
     maximumFractionDigits: 0,
@@ -22,19 +24,19 @@ export function sourceLabel(source: string): string {
 }
 
 export function typeLabel(type: string): string {
-  const labels: Record<string, string> = {
-    house: "Maison / Appartement",
-    land: "Terrain",
+  const keys: Record<string, string> = {
+    house: "cat.houseOrApartment",
+    land: "cat.land",
   };
-  return labels[type] ?? type;
+  return keys[type] ? t(keys[type]) : type;
 }
 
 export function listingTypeLabel(listingType: string): string {
-  const labels: Record<string, string> = {
-    sale: "À vendre",
-    rent: "À louer",
+  const keys: Record<string, string> = {
+    sale: "listing.sale",
+    rent: "listing.rent",
   };
-  return labels[listingType] ?? listingType;
+  return keys[listingType] ? t(keys[listingType]) : listingType;
 }
 
 export function truncate(text: string | null | undefined, max = 120): string {
@@ -250,19 +252,13 @@ export function governorateOf(property: {
 }
 
 export function subcategoryLabel(subcategory: string | null | undefined, fallbackType: string): string {
-  if (!subcategory) {
-    const labels: Record<string, string> = {
-      house: "Maison / Villa",
-      land: "Terrain",
-    };
-    return labels[fallbackType] ?? fallbackType;
-  }
-  const labels: Record<string, string> = {
-    apartment: "Appartement",
-    house: "Maison / Villa",
-    office: "Bureau / Commerce",
-    studio: "Studio / Chambre",
-    land: "Terrain",
+  const keys: Record<string, string> = {
+    apartment: "cat.apartment",
+    house: "cat.house",
+    office: "cat.office",
+    studio: "cat.studio",
+    land: "cat.land",
   };
-  return labels[subcategory] ?? subcategory;
+  const slug = subcategory || fallbackType;
+  return keys[slug] ? t(keys[slug]) : slug;
 }

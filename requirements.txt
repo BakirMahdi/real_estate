@@ -1,9 +1,21 @@
-fastapi
-uvicorn
-beautifulsoup4
-requests
-python-certifi-win32
-lxml
-psycopg2-binary
-python-jose[cryptography]
-bcrypt
+fastapi==0.139.0
+uvicorn==0.51.0
+slowapi==0.1.10
+beautifulsoup4==4.15.0
+requests==2.34.2
+# Windows-only cert-store shim, needed for the "Dev local (sans rebuild
+# Docker)" workflow in the README when running directly on a Windows host
+# (e.g. behind a corporate/school TLS-intercepting proxy). Marker keeps pip
+# from installing it (and it from no-op importing) inside the Linux backend
+# container, where it does nothing useful.
+python-certifi-win32==1.6.1; sys_platform == "win32"
+lxml==6.1.1
+psycopg2-binary==2.9.12
+python-jose[cryptography]==3.5.0
+bcrypt==5.0.0
+pandas==3.0.3
+scikit-learn==1.9.0
+joblib==1.5.3
+numpy==2.5.1
+google-genai==2.11.0
+google-auth==2.55.2

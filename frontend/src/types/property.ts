@@ -22,6 +22,21 @@ export interface Property {
   archived?: boolean;
 }
 
+export interface AgentMessage {
+  role: "user" | "model";
+  content: string;
+  /** ISO 8601 timestamp; absent on messages saved before timestamps were added. */
+  created_at?: string;
+}
+
+export interface PropertyEstimate {
+  estimated_price: number;
+  /** 0-100 deal quality vs. the model estimate; null for rentals and undisclosed prices. */
+  investment_score: number | null;
+  model_trained_at: string;
+  model_metrics: Record<string, number>;
+}
+
 export interface PropertyListResponse {
   count: number;
   items: Property[];

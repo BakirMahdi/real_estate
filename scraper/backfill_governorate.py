@@ -23,13 +23,23 @@ def run():
     cur.execute("SELECT id, city, address FROM properties")
     rows = cur.fetchall()
 
-    updated = 0
-    for pid, city, address in rows:
-        gov = resolve_governorate(city, address)
+    ids = [pid for pid, _city, _address in rows]
+    govs = [resolve_governorate(city, address) for _pid, city, address in rows]
+    updated = len(ids)
+
+    # One batched UPDATE instead of one per row - unnest() pairs the two
+    # arrays element-wise into a set of (id, governorate) rows to join
+    # against, same pattern as main.py's archive_missing_ads.
+    if ids:
         cur.execute(
-            "UPDATE properties SET governorate = %s WHERE id = %s", (gov, pid)
+            """
+            UPDATE properties AS p
+            SET governorate = batch.gov
+            FROM unnest(%s::int[], %s::text[]) AS batch(id, gov)
+            WHERE p.id = batch.id
+            """,
+            (ids, govs),
         )
-        updated += 1
 
     conn.commit()
 

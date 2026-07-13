@@ -11,7 +11,7 @@ import threading
 import joblib
 import numpy as np
 
-from .features import to_feature_frame
+from .features import ALL_FEATURES, to_feature_frame
 from .prepare_training_data import MIN_SALE_PRICE
 
 MODEL_DIR = os.getenv("MODEL_DIR", "models")
@@ -30,6 +30,18 @@ class ModelNotTrained(Exception):
     """Raised when no trained model artifact exists yet."""
 
 
+class ModelSchemaMismatch(Exception):
+    """Raised when the loaded artifact was trained on a different feature set.
+
+    The pipeline's ColumnTransformer addresses columns positionally (see
+    features.py), so a code change to CATEGORICAL_FEATURES/NUMERIC_FEATURES
+    since the artifact was trained wouldn't error out - it would silently
+    feed columns into the wrong slots and produce a confidently wrong
+    prediction. Caught by the /estimate route (see M2) and degraded to a 503
+    like any other estimation failure, rather than serving a bad number.
+    """
+
+
 def _load_artifact():
     global _artifact
     if _artifact is None:
@@ -40,7 +52,14 @@ def _load_artifact():
                         f"No model artifact at {MODEL_PATH}; run "
                         "`python -m scraper.ml.train_price_model` first."
                     )
-                _artifact = joblib.load(MODEL_PATH)
+                artifact = joblib.load(MODEL_PATH)
+                if artifact.get("features") != ALL_FEATURES:
+                    raise ModelSchemaMismatch(
+                        f"Model at {MODEL_PATH} was trained on {artifact.get('features')!r}, "
+                        f"but the code now expects {ALL_FEATURES!r}. Retrain with "
+                        "`python -m scraper.ml.train_price_model`."
+                    )
+                _artifact = artifact
     return _artifact
 
 

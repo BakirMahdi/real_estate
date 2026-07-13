@@ -16,14 +16,8 @@ export function WelcomePage() {
 
   return (
     <div className="relative flex h-full w-full items-center overflow-hidden">
-      {/* Decorative floating gradient blobs */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute -left-20 top-10 h-72 w-72 animate-float rounded-full bg-brand-400/20 blur-3xl" />
-        <div
-          className="absolute -right-16 top-40 h-80 w-80 animate-float rounded-full bg-brand-600/15 blur-3xl"
-          style={{ animationDelay: "1.5s" }}
-        />
-      </div>
+      {/* The decorative gradient blobs live in <LandingBackground>, mounted
+          fixed at the App level so they show behind every page. */}
 
       <section className="mx-auto w-full max-w-5xl px-4 py-8 text-center sm:px-6">
         <div

@@ -1,5 +1,5 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import DataTable from "datatables.net-react";
 import type { DataTableRef } from "datatables.net-react";
 import DT from "datatables.net-dt";
@@ -17,19 +17,12 @@ import {
   Server,
   X,
   XCircle,
-  Lock,
   Users,
   Archive,
   ArchiveRestore,
   Globe,
 } from "lucide-react";
-import {
-  API_BASE,
-  api,
-  isAuthenticated,
-  logout,
-  setSession,
-} from "../api/client";
+import { API_BASE, api, isAuthenticated, logout } from "../api/client";
 import {
   formatArea,
   formatPrice,
@@ -202,9 +195,6 @@ export function DashboardPage() {
   const [nextScrapeTime, setNextScrapeTime] = useState<number | null>(null);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [needsAuth, setNeedsAuth] = useState(!isAuthenticated());
-  const [passwordInput, setPasswordInput] = useState("");
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [kpis, setKpis] = useState<{
     properties_by_type: Record<string, number>;
     archived_count: number;
@@ -642,74 +632,17 @@ export function DashboardPage() {
     },
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passwordInput) return;
-
-    setAuthError(null);
-    setIsAuthenticating(true);
-
-    try {
-      const response = await api.login("admin", passwordInput);
-      // The JWT is set as an HttpOnly cookie by the backend; keep only
-      // non-sensitive UI state locally.
-      setSession(response.role, response.username);
-      setNeedsAuth(false);
-      refresh();
-    } catch (err) {
-      setAuthError(t("dashboard.wrongPassword"));
-    } finally {
-      setIsAuthenticating(false);
-    }
-  };
-
   const apiOk = apiHealth?.status === "ok";
   const dbOk = dbHealth?.status === "ok";
 
   if (needsAuth) {
-    return (
-      <div className="mx-auto max-w-md px-4 py-16 sm:px-6">
-        <div className="glass rounded-2xl p-8 shadow-card text-center animate-fade-in">
-          <div className="mb-4 mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/20">
-            <Lock className="h-6 w-6 text-brand-400" />
-          </div>
-          <h2 className="mb-2 font-display text-2xl font-semibold text-slate-900">
-            {t("dashboard.authRequired")}
-          </h2>
-          <p className="mb-6 text-sm text-slate-500">
-            {t("dashboard.authSubtitle")}
-          </p>
-          <form onSubmit={handleLogin} className="flex flex-col gap-4">
-            <input
-              type="password"
-              placeholder={t("dashboard.passwordPlaceholder")}
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              className={`w-full rounded-xl border bg-white px-4 py-3 text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-1 ${authError ? "border-red-500/50 focus:border-red-500 focus:ring-red-500" : "border-slate-200 focus:border-brand-500 focus:ring-brand-500"}`}
-              autoFocus
-              disabled={isAuthenticating}
-            />
-            {authError && (
-              <p className="text-left text-sm text-red-600">{authError}</p>
-            )}
-            <button
-              type="submit"
-              disabled={isAuthenticating || !passwordInput}
-              className="btn-primary w-full justify-center disabled:opacity-50"
-            >
-              {isAuthenticating ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {t("dashboard.verifying")}
-                </>
-              ) : (
-                t("dashboard.signIn")
-              )}
-            </button>
-          </form>
-        </div>
-      </div>
-    );
+    // Previously a bespoke password-only form that posted the literal
+    // username "admin" straight to /login - a second, redundant auth flow
+    // alongside the real email/password + Google sign-in on LoginPage, only
+    // reachable here on first load or when a session expires mid-visit.
+    // Route through the one real login flow instead and bounce back here
+    // once it succeeds.
+    return <Navigate to="/login?next=/dashboard" replace />;
   }
 
   return (

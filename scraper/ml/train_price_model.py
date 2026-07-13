@@ -96,6 +96,12 @@ def train() -> dict:
     pipeline.fit(X_train, y_train)
     metrics = evaluate(pipeline, X_test, y_test, test_df["listing_type"])
 
+    # Note: `metrics` describes this 80%-trained holdout model, not the
+    # 100%-refit pipeline saved below - standard practice (you can't evaluate
+    # a model on data it was also fit on), but it means the numbers served by
+    # /estimate are a slightly conservative proxy for the shipped model's
+    # actual accuracy, not a direct measurement of it.
+    #
     # Refit on all cleaned rows before saving: the held-out split exists only
     # to measure generalization, and the shipped model shouldn't waste 20% of
     # the data. There's no held-out set left to leak into at this point, so

@@ -25,6 +25,9 @@ function readStoredLang(): Lang {
 let currentLang: Lang = readStoredLang();
 
 const fr: Record<string, string> = {
+  // Generic fallbacks
+  "common.loading": "Chargement...",
+
   // Header / nav
   "nav.listings": "Annonces",
   "nav.dashboard": "Dashboard",
@@ -92,7 +95,7 @@ const fr: Record<string, string> = {
   "error.usernameTaken":
     "Ce nom d'utilisateur est déjà utilisé. Choisissez-en un autre ou connectez-vous.",
   "error.usernameShort": "Le nom d'utilisateur doit contenir au moins 3 caractères.",
-  "error.passwordShort": "Le mot de passe doit contenir au moins 6 caractères.",
+  "error.passwordShort": "Le mot de passe doit contenir au moins 8 caractères.",
   "error.timeout": "Le serveur met trop de temps à répondre. Veuillez réessayer.",
   "error.network": "Impossible de contacter le serveur. Vérifiez votre connexion.",
   "error.generic": "Une erreur est survenue. Veuillez réessayer.",
@@ -339,6 +342,9 @@ const fr: Record<string, string> = {
 };
 
 const en: Record<string, string> = {
+  // Generic fallbacks
+  "common.loading": "Loading...",
+
   // Header / nav
   "nav.listings": "Listings",
   "nav.dashboard": "Dashboard",
@@ -403,7 +409,7 @@ const en: Record<string, string> = {
   "error.rateLimited": "Too many attempts. Please wait a minute and try again.",
   "error.usernameTaken": "This username is already taken. Pick another one or log in.",
   "error.usernameShort": "The username must be at least 3 characters long.",
-  "error.passwordShort": "The password must be at least 6 characters long.",
+  "error.passwordShort": "The password must be at least 8 characters long.",
   "error.timeout": "The server is taking too long to respond. Please try again.",
   "error.network": "Could not reach the server. Check your connection.",
   "error.generic": "Something went wrong. Please try again.",

@@ -2,29 +2,6 @@ from .db import get_conn, db_cursor
 from .governorate import resolve_governorate
 
 
-def property_exists(source, ad_id):
-    with db_cursor() as cur:
-        cur.execute(
-            "SELECT id FROM properties WHERE source = %s AND ad_id = %s",
-            (source, ad_id),
-        )
-        result = cur.fetchone()
-    return result is not None
-
-
-def bulk_get_existing_ids(source, ad_ids):
-    """Return the set of ad_ids that already exist in the DB for the given source."""
-    if not ad_ids:
-        return set()
-    with db_cursor() as cur:
-        cur.execute(
-            "SELECT ad_id FROM properties WHERE source = %s AND ad_id = ANY(%s)",
-            (source, list(ad_ids)),
-        )
-        existing = {row[0] for row in cur.fetchall()}
-    return existing
-
-
 def get_active_ad_ids(source):
     """Return the set of ad_ids that already exist (non-archived) for a source.
 

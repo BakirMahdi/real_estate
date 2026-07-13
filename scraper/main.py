@@ -1,7 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, Request, Response, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.base import BaseHTTPMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -21,7 +20,7 @@ from .agent.db_access import ensure_readonly_role
 from .agent.gemini_client import GeminiNotConfigured, GeminiUnavailable
 from .agent import conversation_store
 from .agent import service as agent_service
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import asyncio
 import gc
 import re
@@ -76,7 +75,6 @@ app.add_middleware(
 )
 
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
-security = HTTPBearer()
 
 # Login JWT is stored in this HttpOnly cookie so JavaScript (and therefore any
 # XSS) can't read it. secure=True (HTTPS-only) should be enabled in production
@@ -125,7 +123,7 @@ class ResendCodeRequest(BaseModel):
 
 
 class AgentChatRequest(BaseModel):
-    message: str
+    message: str = Field(min_length=1, max_length=2000)
     property_id: int | None = None
 
 
@@ -154,14 +152,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
                         return await call_next(request)
 
                 # sendBeacon (used to auto-cancel on page close) cannot set
-                # headers; same-origin beacons carry the cookie automatically,
-                # but keep accepting the JWT as a query parameter for any
-                # non-browser caller.
-                query_token = request.query_params.get("token")
-                if query_token:
-                    payload = verify_token(query_token)
-                    if payload and payload.get("role") == "admin":
-                        return await call_next(request)
+                # headers, but a same-origin beacon carries the HttpOnly auth
+                # cookie automatically, so it's already authenticated above.
+                # No caller needs the token in the URL, and query strings leak
+                # into access logs, browser history, and the Referer header -
+                # so that path isn't offered.
 
                 # Fall back to API key (also treated as admin-equivalent)
                 api_key = request.headers.get("x-api-key")
@@ -320,13 +315,21 @@ def archive_missing_ads(found_ad_ids, completed_sources):
                 if (source, ad_id) not in found_ad_ids:
                     to_archive.append((source, ad_id))
 
-            # Archive them
+            # Archive them in one batched statement instead of one UPDATE per
+            # row - unnest() pairs the two arrays element-wise into a set of
+            # (source, ad_id) rows to join against.
             if to_archive:
-                for source, ad_id in to_archive:
-                    cur.execute(
-                        "UPDATE properties SET archived = TRUE WHERE source = %s AND ad_id = %s",
-                        (source, ad_id)
-                    )
+                sources = [source for source, _ad_id in to_archive]
+                ad_ids = [ad_id for _source, ad_id in to_archive]
+                cur.execute(
+                    """
+                    UPDATE properties AS p
+                    SET archived = TRUE
+                    FROM unnest(%s::text[], %s::text[]) AS batch(source, ad_id)
+                    WHERE p.source = batch.source AND p.ad_id = batch.ad_id
+                    """,
+                    (sources, ad_ids),
+                )
 
         # Count archived per source so each source's row shows its own total
         counts = {}
@@ -824,8 +827,8 @@ def register(user: UserRegister, request: Request):
     email = _normalize_email(user.email)
     if not _EMAIL_RE.match(email):
         raise HTTPException(status_code=400, detail="A valid email address is required")
-    if len(user.password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+    if len(user.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
 
     status, code = register_local_user(email, user.password)
     if status == "error":

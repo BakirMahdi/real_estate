@@ -25,7 +25,7 @@ backstop.
 import os
 import secrets
 
-from ..db import get_conn
+from ..db import get_conn, required_env
 
 AGENT_DB_USER = "agent_ro"
 _DATA_DIR = os.getenv("DATA_DIR", "data")
@@ -89,7 +89,7 @@ def get_readonly_conn():
     import psycopg2
 
     return psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
+        host=required_env("DB_HOST"),
         port=int(os.getenv("DB_PORT", "5432")),
         database=os.getenv("DB_NAME", "realestate"),
         user=AGENT_DB_USER,

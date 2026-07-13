@@ -30,6 +30,12 @@ from .scrapers.expat import _RENT_PATH_KEYWORDS, _SALE_PATH_KEYWORDS
 AREA_BOUNDS = (1, 1_000_000)
 BEDROOMS_BOUNDS = (0, 20)
 
+# The only column names this script ever writes to (see the `changes.append`
+# calls below) - `field` is always one of these today, but it's interpolated
+# into an f-string UPDATE below, so pin it to an explicit allowlist rather
+# than trusting that invariant to hold forever.
+_UPDATABLE_FIELDS = {"listing_type", "area", "bedrooms"}
+
 _KEYWORD_SETS = {
     "tayara": (TAYARA_RENT_KEYWORDS, TAYARA_SALE_KEYWORDS),
     "mubawab": (MUBAWAB_RENT_KEYWORDS, MUBAWAB_SALE_KEYWORDS),
@@ -161,6 +167,8 @@ def run(apply_changes=False):
         print(f"Audit log written to {log_path}")
 
         for field, items in by_field.items():
+            if field not in _UPDATABLE_FIELDS:
+                raise ValueError(f"refusing to interpolate unrecognized column name: {field!r}")
             for pid, _old, new in items:
                 cur.execute(f"UPDATE properties SET {field} = %s WHERE id = %s", (new, pid))
         conn.commit()

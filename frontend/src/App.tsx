@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { AgentChatWidget } from "./components/AgentChatWidget";
 import { Header } from "./components/Header";
+import { LandingBackground } from "./components/LandingBackground";
 import { isAdmin, isAuthenticated } from "./api/client";
 import { useLang } from "./lib/i18n";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -29,6 +30,7 @@ export default function App() {
 
   return (
     <div className={`flex flex-col ${fitsViewport ? "h-screen overflow-hidden" : "min-h-screen"}`}>
+      <LandingBackground />
       <Header />
       <main className={fitsViewport ? "flex flex-1 overflow-hidden" : "flex-1"}>
         <Routes>

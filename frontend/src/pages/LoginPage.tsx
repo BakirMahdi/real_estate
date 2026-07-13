@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { AlertCircle, Building2, LogIn, UserPlus } from "lucide-react";
 import { api, setSession } from "../api/client";
 import { useLang } from "../lib/i18n";
@@ -63,6 +63,16 @@ export function LoginPage() {
   const googleBtnRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { t } = useLang();
+  const [searchParams] = useSearchParams();
+  // Where to land after a successful login - e.g. the dashboard sends
+  // unauthenticated/expired-session visitors here with ?next=/dashboard so
+  // they land back where they were instead of always on /annonces. Only an
+  // in-app path is honored (must start with "/" and not "//", which a
+  // browser would treat as protocol-relative to another host) so this can't
+  // be used as an open redirect.
+  const nextParam = searchParams.get("next");
+  const postLoginPath =
+    nextParam && nextParam.startsWith("/") && !nextParam.startsWith("//") ? nextParam : "/annonces";
 
   // Google sign-in is only offered when the backend has a client id configured.
   useEffect(() => {
@@ -86,7 +96,7 @@ export function LoginPage() {
             try {
               const r = await api.googleLogin(resp.credential);
               setSession(r.role, r.username);
-              navigate("/annonces");
+              navigate(postLoginPath);
             } catch {
               setError("error.google");
             }
@@ -103,7 +113,7 @@ export function LoginPage() {
     return () => {
       cancelled = true;
     };
-  }, [googleClientId, navigate]);
+  }, [googleClientId, navigate, postLoginPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,7 +125,7 @@ export function LoginPage() {
       if (isLogin) {
         const response = await api.login(email, password);
         setSession(response.role, response.username);
-        navigate("/annonces");
+        navigate(postLoginPath);
       } else {
         // Register -> a code is emailed; move to the verification step
         // instead of logging in immediately.
@@ -330,7 +340,12 @@ export function LoginPage() {
                     className="w-full rounded-lg border border-brand-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     placeholder="••••••••"
                     required
-                    minLength={6}
+                    // Only enforced when registering: an existing account's
+                    // password may only satisfy the older, shorter minimum,
+                    // so applying today's stricter minimum on login too would
+                    // let this browser-side check block a real, correct
+                    // password before it ever reaches the server.
+                    minLength={isLogin ? undefined : 8}
                   />
                 </div>
 

@@ -9,7 +9,7 @@ from .scrapers import tayara as tayara_scraper
 from .scrapers import mubawab as mubawab_scraper
 from .scrapers import expat as expat_scraper
 from .insert import bulk_insert_properties, bulk_get_latest_properties, is_same_property, get_active_ad_ids
-from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_admin, archive_property, unarchive_property
+from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_admin, archive_property, unarchive_property, add_favorite, remove_favorite, is_favorite, get_favorite_properties
 from .db import db_cursor
 from .cancellation import ScrapeCancelled
 from .scrape_log import ScrapeLogger
@@ -735,6 +735,7 @@ def list_all_properties(include_archived: bool = Query(default=False)):
 
 @app.get("/properties/search")
 def search_properties(
+    request: Request,
     city: str | None = Query(default=None),
     property_type: str | None = Query(default=None),
     listing_type: str | None = Query(default=None),
@@ -750,6 +751,11 @@ def search_properties(
     include_archived: bool = Query(default=False),
     archived_only: bool = Query(default=False),
 ):
+    # Optional auth: a logged-in caller gets each card's saved state inline
+    # (see get_properties' favorites join) so the frontend doesn't need a
+    # separate status request per card; a logged-out caller just gets
+    # is_favorite=False on every row.
+    user = get_current_user(request)
     properties, total_count = get_properties(
         city=city,
         property_type=property_type,
@@ -765,6 +771,7 @@ def search_properties(
         offset=offset,
         include_archived=include_archived,
         archived_only=archived_only,
+        user_id=user["id"] if user else None,
     )
     return {"count": total_count, "items": properties}
 
@@ -793,6 +800,60 @@ def property_estimate(property_id: int):
         # an opaque 500 - degrade the same way as "no model trained yet".
         print(f"[ML] Estimate failed for property {property_id}: {type(e).__name__}: {e}")
         raise HTTPException(status_code=503, detail="Price estimate is temporarily unavailable")
+
+
+@app.get("/favorites")
+def list_favorites(request: Request):
+    """The current user's saved listings. Any logged-in user."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    properties = get_favorite_properties(user["id"])
+    return {"count": len(properties), "items": properties}
+
+
+@app.get("/favorites/{property_id}/status")
+def favorite_status(property_id: int, request: Request):
+    """Whether the current user has this listing saved. Any logged-in user."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    property_data = get_property_by_id(property_id)
+    if not property_data:
+        raise HTTPException(status_code=404, detail="Property not found")
+    return {"is_favorite": is_favorite(user["id"], property_data["source"], property_data["ad_id"])}
+
+
+@app.post("/favorites/{property_id}")
+def add_favorite_endpoint(property_id: int, request: Request):
+    """Save a listing. Any logged-in user.
+
+    Resolved to (source, ad_id) rather than stored against the raw id, so the
+    favorite still matches after the listing is re-scraped and versioned into
+    a new row (see get_favorite_properties). Idempotent - favoriting an
+    already-saved listing is not an error.
+    """
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    property_data = get_property_by_id(property_id)
+    if not property_data:
+        raise HTTPException(status_code=404, detail="Property not found")
+    add_favorite(user["id"], property_data["source"], property_data["ad_id"])
+    return {"message": "Added to favorites"}
+
+
+@app.delete("/favorites/{property_id}")
+def remove_favorite_endpoint(property_id: int, request: Request):
+    """Un-save a listing. Any logged-in user. Idempotent."""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Login required")
+    property_data = get_property_by_id(property_id)
+    if not property_data:
+        raise HTTPException(status_code=404, detail="Property not found")
+    remove_favorite(user["id"], property_data["source"], property_data["ad_id"])
+    return {"message": "Removed from favorites"}
 
 
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")

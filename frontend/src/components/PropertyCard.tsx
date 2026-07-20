@@ -1,5 +1,7 @@
-import { Link } from "react-router-dom";
-import { ArrowUpRight, BedDouble, MapPin, Maximize2 } from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { ArrowUpRight, BedDouble, Heart, MapPin, Maximize2 } from "lucide-react";
+import { api, isAuthenticated } from "../api/client";
 import type { Property } from "../types/property";
 import {
   formatArea,
@@ -16,12 +18,50 @@ import { useLang } from "../lib/i18n";
 interface PropertyCardProps {
   property: Property;
   index?: number;
+  /** Called after a successful toggle - e.g. the favorites page uses this to
+   * drop the card from its list the moment it's unfavorited. */
+  onFavoriteChange?: (propertyId: number, isFavorite: boolean) => void;
 }
 
-export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
+export function PropertyCard({ property, index = 0, onFavoriteChange }: PropertyCardProps) {
   const { t } = useLang();
+  const navigate = useNavigate();
   const gradient = propertyGradient(property.id);
   const mainImage = property.images && property.images.length > 0 ? property.images[0] : null;
+  // Seeded from the list response (see get_properties' favorites join on the
+  // backend) so cards show the right state on first render, no per-card
+  // fetch needed - then updated locally as the user toggles it.
+  const [isFavorite, setIsFavorite] = useState(property.is_favorite ?? false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+
+  const toggleFavorite = async (e: React.MouseEvent) => {
+    // The button lives inside the card's <Link> - without these, a click
+    // would also navigate to the property page.
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!isAuthenticated()) {
+      navigate(`/login?next=/property/${property.id}`);
+      return;
+    }
+    if (favoriteLoading) return;
+
+    const next = !isFavorite;
+    setFavoriteLoading(true);
+    setIsFavorite(next); // optimistic; reverted below on failure
+    try {
+      if (next) {
+        await api.addFavorite(property.id);
+      } else {
+        await api.removeFavorite(property.id);
+      }
+      onFavoriteChange?.(property.id, next);
+    } catch {
+      setIsFavorite(!next);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   return (
     <div className="group block animate-slide-up overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
@@ -53,6 +93,19 @@ export function PropertyCard({ property, index = 0 }: PropertyCardProps) {
               {listingTypeLabel(property.listing_type)}
             </span>
           </div>
+
+          <button
+            type="button"
+            onClick={toggleFavorite}
+            disabled={favoriteLoading}
+            aria-pressed={isFavorite}
+            aria-label={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
+            title={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/85 text-slate-700 backdrop-blur transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Heart className={`h-4 w-4 transition ${isFavorite ? "fill-red-500 text-red-500" : ""}`} />
+          </button>
+
           <div className="absolute bottom-4 left-4 right-4">
             <p className="font-display text-2xl font-semibold text-white drop-shadow">
               {formatPrice(property.price)}

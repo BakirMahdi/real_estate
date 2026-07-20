@@ -180,3 +180,33 @@ def resolve_governorate(city, address):
                 return gov
     city = (city or "").strip()
     return city if city else "Tunisie"
+
+
+# Delegation keys matched longest-first so the most specific town wins (e.g.
+# "hammam sousse" before "sousse"), same "most-specific" rule as the
+# neighborhood gazetteer.
+_DELEGATIONS_BY_LEN = sorted(DELEGATIONS.keys(), key=len, reverse=True)
+
+
+def resolve_delegation(city, address):
+    """Town/delegation-level location, one step finer than governorate.
+
+    Used as a price-model feature: the urban `neighborhood` gazetteer only
+    covers Grand-Tunis areas, so for the rural towns where most land sits the
+    model otherwise has nothing between `city` (noisy free text) and
+    `governorate` (too coarse - it explains almost none of land's price/m2
+    spread). Returns the matched delegation, else the governorate name, else
+    None (unmatched rows are left blank rather than echoing the raw city,
+    which is already a separate feature).
+    """
+    norm = _normalize(f"{address or ''} {city or ''}")
+    if norm:
+        padded = f" {norm} "
+        for key in _DELEGATIONS_BY_LEN:
+            if f" {key} " in padded:
+                return key
+        for canonical, aliases in GOVERNORATES:
+            for alias in aliases:
+                if f" {alias} " in padded:
+                    return canonical
+    return None

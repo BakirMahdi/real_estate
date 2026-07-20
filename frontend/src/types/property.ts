@@ -20,6 +20,8 @@ export interface Property {
   subcategory?: string | null;
   images?: string[] | null;
   archived?: boolean;
+  /** Whether the current logged-in user has saved this listing; false/absent when logged out. */
+  is_favorite?: boolean;
 }
 
 export interface AgentMessage {

@@ -115,7 +115,10 @@ services:
       # in .env instead of leaving them hardcoded here if this ever runs
       # somewhere besides localhost.
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@admin.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+      # pgAdmin rejects passwords shorter than 6 chars at first-seed time and
+      # then silently creates no user at all (login just says "wrong"), so the
+      # fallback must be >= 6 chars - "admin" (5) is a trap. Override in .env.
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin123}
       # Server mode (the default for this image) requires the login above
       # instead of skipping straight to the DB browser.
       PGADMIN_CONFIG_SERVER_MODE: "True"

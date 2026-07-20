@@ -30,6 +30,7 @@ const fr: Record<string, string> = {
 
   // Header / nav
   "nav.listings": "Annonces",
+  "nav.favorites": "Favoris",
   "nav.dashboard": "Dashboard",
   "nav.login": "Connexion",
   "nav.logout": "Déconnexion",
@@ -171,6 +172,19 @@ const fr: Record<string, string> = {
   "prop.description": "Description",
   "prop.viewOn": "Voir sur",
   "prop.simulate": "Simuler un crédit",
+  "prop.addFavorite": "Ajouter aux favoris",
+  "prop.removeFavorite": "Retirer des favoris",
+
+  // Favorites page
+  "favorites.eyebrow": "Vos annonces enregistrées",
+  "favorites.title": "Mes favoris",
+  "favorites.subtitle": "Retrouvez ici toutes les annonces que vous avez enregistrées.",
+  "favorites.loading": "Chargement de vos favoris...",
+  "favorites.loadError": "Impossible de charger vos favoris.",
+  "favorites.empty": "Vous n'avez pas encore de favoris. Ouvrez une annonce et cliquez sur le cœur pour l'enregistrer ici.",
+  "favorites.browse": "Parcourir les annonces",
+  "favorites.count.one": "favori",
+  "favorites.count.many": "favoris",
 
   // AI estimate card
   "est.title": "Estimation IA",
@@ -347,6 +361,7 @@ const en: Record<string, string> = {
 
   // Header / nav
   "nav.listings": "Listings",
+  "nav.favorites": "Favorites",
   "nav.dashboard": "Dashboard",
   "nav.login": "Log in",
   "nav.logout": "Log out",
@@ -485,6 +500,19 @@ const en: Record<string, string> = {
   "prop.description": "Description",
   "prop.viewOn": "View on",
   "prop.simulate": "Simulate a loan",
+  "prop.addFavorite": "Add to favorites",
+  "prop.removeFavorite": "Remove from favorites",
+
+  // Favorites page
+  "favorites.eyebrow": "Your saved listings",
+  "favorites.title": "My favorites",
+  "favorites.subtitle": "All the listings you've saved, in one place.",
+  "favorites.loading": "Loading your favorites...",
+  "favorites.loadError": "Couldn't load your favorites.",
+  "favorites.empty": "You haven't saved any favorites yet. Open a listing and tap the heart to save it here.",
+  "favorites.browse": "Browse listings",
+  "favorites.count.one": "favorite",
+  "favorites.count.many": "favorites",
 
   // AI estimate card
   "est.title": "AI estimate",

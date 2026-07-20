@@ -6,6 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from requests import RequestException
 
+from ..amenities import extract_amenities_present
 from ..cancellation import raise_if_cancelled
 from ..classify import canonical_property_type
 from ..http_client import get_session
@@ -46,13 +47,6 @@ SALE_KEYWORDS = (
     "vente",
     "للبيع",
 )
-
-FEATURE_KEYWORDS = {
-    "garage": ("garage",),
-    "furnished": ("meublé", "meublee", "meublée", "furnished"),
-    "terrace": ("terrasse", "terrace", "balcon"),
-    "pool": ("piscine", "pool"),
-}
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -207,16 +201,15 @@ def extract_features(card):
 
 
 def extract_house_features(card, title, description):
+    # The structured ".adFeature" chips are strong positive signals, so feed
+    # them into the shared extractor alongside the free text. Same negation-aware
+    # logic as tayara/expat, so amenities are labelled consistently across sources.
     feature_texts = [
-        clean_text(feature.get_text(" ", strip=True)).lower()
+        clean_text(feature.get_text(" ", strip=True))
         for feature in card.select(".adFeature")
     ]
-    combined_text = " ".join([title, description, *feature_texts]).lower()
-
-    return {
-        feature: any(keyword in combined_text for keyword in keywords)
-        for feature, keywords in FEATURE_KEYWORDS.items()
-    }
+    combined_text = " ".join([title, description, *feature_texts])
+    return extract_amenities_present(combined_text)
 
 def extract_ad_id(url):
     match = re.search(r"/(?:pa|a|p)/(\d+)", url or "")

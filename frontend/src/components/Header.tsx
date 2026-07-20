@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Building2, ChevronDown, LayoutDashboard, Search, LogIn, LogOut, UserCircle } from "lucide-react";
+import { Building2, ChevronDown, Heart, LayoutDashboard, Search, LogIn, LogOut, UserCircle } from "lucide-react";
 import { isAuthenticated, logout, isAdmin, getUsername } from "../api/client";
 import { useLang, type Lang } from "../lib/i18n";
 
 const nav = [
   { to: "/annonces", labelKey: "nav.listings", icon: Search },
+  { to: "/favorites", labelKey: "nav.favorites", icon: Heart, authOnly: true },
   { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard, adminOnly: true },
 ];
 
@@ -63,8 +64,9 @@ export function Header() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {nav.map(({ to, labelKey, icon: Icon, adminOnly }) => {
+          {nav.map(({ to, labelKey, icon: Icon, adminOnly, authOnly }) => {
             if (adminOnly && !userIsAdmin) return null;
+            if (authOnly && !authenticated) return null;
             const active = location.pathname === to;
             return (
               <Link

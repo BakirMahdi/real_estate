@@ -27,6 +27,11 @@ FEATURE_COLUMNS = [
     "area",
     "governorate",
     "city",
+    # address/title/description feed the derived `neighborhood` feature (see
+    # ml/features.to_feature_frame); they're not model inputs themselves.
+    "address",
+    "title",
+    "description",
     "bedrooms",
     "garage",
     "furnished",

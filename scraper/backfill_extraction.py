@@ -1,8 +1,10 @@
 """One-off backfill: re-run the hardened extraction logic (area, bedrooms,
-listing_type) against every already-scraped row and correct any that were
-parsed wrong by the bugs fixed in scraper/scrapers/{tayara,mubawab,expat}.py
+listing_type, amenities) against every already-scraped row and correct any that
+were parsed wrong by the bugs fixed in scraper/scrapers/{tayara,mubawab,expat}.py
 (the Arabic-surface-in-title miss, the "mois +230 caution" -> 230-bedroom
-false match, and the land-ad rent/sale default fallback).
+false match, the land-ad rent/sale default fallback) and by the shared
+negation-aware amenity extractor (which stops "non meublé" being read as
+furnished=True and unifies the per-source keyword lists).
 
 Only touches a field when the recomputed value is backed by an explicit
 signal (a keyword match, a unit token, an in-range number) -- never guesses
@@ -18,6 +20,7 @@ import csv
 import datetime
 import sys
 
+from .amenities import extract_amenities
 from .db import get_conn
 from .scrapers.tayara import parse_area as tayara_parse_area
 from .scrapers.tayara import parse_rooms as tayara_parse_rooms
@@ -30,11 +33,13 @@ from .scrapers.expat import _RENT_PATH_KEYWORDS, _SALE_PATH_KEYWORDS
 AREA_BOUNDS = (1, 1_000_000)
 BEDROOMS_BOUNDS = (0, 20)
 
+AMENITY_FIELDS = ("garage", "furnished", "terrace", "pool")
+
 # The only column names this script ever writes to (see the `changes.append`
 # calls below) - `field` is always one of these today, but it's interpolated
 # into an f-string UPDATE below, so pin it to an explicit allowlist rather
 # than trusting that invariant to hold forever.
-_UPDATABLE_FIELDS = {"listing_type", "area", "bedrooms"}
+_UPDATABLE_FIELDS = {"listing_type", "area", "bedrooms", *AMENITY_FIELDS}
 
 _KEYWORD_SETS = {
     "tayara": (TAYARA_RENT_KEYWORDS, TAYARA_SALE_KEYWORDS),
@@ -96,7 +101,8 @@ def run(apply_changes=False):
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT id, source, title, description, url, property_type, listing_type, area, bedrooms
+        SELECT id, source, title, description, url, property_type, listing_type,
+               area, bedrooms, garage, furnished, terrace, pool
         FROM properties
         """
     )
@@ -125,7 +131,12 @@ def run(apply_changes=False):
             if new_area != r["area"]:
                 changes.append((pid, "area", r["area"], new_area))
 
-            if r["property_type"] == "house":
+            # Re-derive bedrooms for every non-land type, mirroring the live
+            # Tayara scraper (scrapers/tayara.py: `if property_type != "land"`).
+            # The old gate here only re-derived houses, which is why apartments
+            # and studios - the bulk of the catalogue - kept a NULL room count
+            # even when their title/description says "S+2" / "3 pièces".
+            if r["property_type"] != "land":
                 new_bedrooms = _bounded(
                     tayara_parse_rooms(r["description"], r["title"]), BEDROOMS_BOUNDS
                 )
@@ -135,9 +146,44 @@ def run(apply_changes=False):
             bounded_area = _bounded(r["area"], AREA_BOUNDS)
             if bounded_area != r["area"]:
                 changes.append((pid, "area", r["area"], bounded_area))
+
+            # Mubawab/Expat bedrooms came from structured page chips we no
+            # longer have, so an existing value is only bound-checked (a
+            # clearly-corrupt one gets nulled), never re-derived. But a large
+            # share of non-land rows never carried a chip value at all (NULL);
+            # for those we can safely fill from the stored free text with the
+            # same room parser - filling a NULL cannot clobber a good value.
             bounded_bedrooms = _bounded(r["bedrooms"], BEDROOMS_BOUNDS)
-            if bounded_bedrooms != r["bedrooms"]:
+            if r["bedrooms"] is not None and bounded_bedrooms != r["bedrooms"]:
                 changes.append((pid, "bedrooms", r["bedrooms"], bounded_bedrooms))
+            elif r["bedrooms"] is None and r["property_type"] != "land":
+                parsed = _bounded(tayara_parse_rooms(r["description"], r["title"]), BEDROOMS_BOUNDS)
+                if parsed is not None:
+                    changes.append((pid, "bedrooms", r["bedrooms"], parsed))
+
+        # Amenities (garage/furnished/terrace/pool). Land has none, so skip it.
+        # The shared negation-aware extractor returns True (positive mention),
+        # False (explicitly negated - "non meublé", "sans garage"), or None (no
+        # signal). We only ever act on an explicit True/False and never write a
+        # None over a stored value, matching this script's "correct only from a
+        # real signal, never guess" rule.
+        if r["property_type"] != "land":
+            derived = extract_amenities(f"{r['title']} {r['description']}")
+            for field in AMENITY_FIELDS:
+                new_val = derived[field]
+                if new_val is None:
+                    continue
+                if source == "tayara":
+                    # Tayara amenities always came from this same free text, so
+                    # re-derive and overwrite - this is what fixes the old
+                    # negation false-positives (e.g. furnished=True on "non meublé").
+                    if new_val != r[field]:
+                        changes.append((pid, field, r[field], new_val))
+                elif r[field] is None:
+                    # Mubawab/Expat amenities partly came from structured chips we
+                    # no longer have; don't clobber an existing value, only fill
+                    # the NULLs where the text now gives an explicit signal.
+                    changes.append((pid, field, r[field], new_val))
 
     by_field = {}
     for pid, field, old, new in changes:

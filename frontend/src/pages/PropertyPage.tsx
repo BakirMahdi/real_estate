@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Heart,
   MapPin,
   Maximize2,
   Sofa,
@@ -18,7 +19,7 @@ import {
   Tag,
   Waves,
 } from "lucide-react";
-import { api } from "../api/client";
+import { api, isAuthenticated } from "../api/client";
 import { CreditSimulatorModal } from "../components/CreditSimulatorModal";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import type { Property, PropertyEstimate } from "../types/property";
@@ -140,6 +141,8 @@ export function PropertyPage() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [showCreditSimulator, setShowCreditSimulator] = useState(false);
   const [estimate, setEstimate] = useState<PropertyEstimate | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -163,7 +166,41 @@ export function PropertyPage() {
       .getPropertyEstimate(Number(id))
       .then(setEstimate)
       .catch(() => setEstimate(null));
+
+    // Only known once we ask the server (favorites are per-user); a
+    // logged-out visitor just sees the button in its default, un-favorited
+    // state - clicking it sends them to log in instead of erroring.
+    setIsFavorite(false);
+    if (isAuthenticated()) {
+      api
+        .getFavoriteStatus(Number(id))
+        .then((r) => setIsFavorite(r.is_favorite))
+        .catch(() => {});
+    }
   }, [id]);
+
+  const toggleFavorite = async () => {
+    if (!isAuthenticated()) {
+      navigate(`/login?next=/property/${id}`);
+      return;
+    }
+    if (!property || favoriteLoading) return;
+
+    const next = !isFavorite;
+    setFavoriteLoading(true);
+    setIsFavorite(next); // optimistic; reverted below on failure
+    try {
+      if (next) {
+        await api.addFavorite(property.id);
+      } else {
+        await api.removeFavorite(property.id);
+      }
+    } catch {
+      setIsFavorite(!next);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   const goBack = () => {
     // Prefer real browser back navigation so the previous page (search
@@ -262,6 +299,21 @@ export function PropertyPage() {
                 {activeImageIndex + 1} / {images.length}
               </div>
             )}
+
+            {/* Favorite toggle */}
+            <button
+              type="button"
+              onClick={toggleFavorite}
+              disabled={favoriteLoading}
+              aria-pressed={isFavorite}
+              aria-label={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
+              title={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white/85 text-slate-700 backdrop-blur transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Heart
+                className={`h-5 w-5 transition ${isFavorite ? "fill-red-500 text-red-500" : ""}`}
+              />
+            </button>
           </div>
 
           {/* Thumbnails Row */}

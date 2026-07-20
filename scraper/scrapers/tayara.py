@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from bs4 import BeautifulSoup
 
+from ..amenities import extract_amenities_present
 from ..cancellation import raise_if_cancelled
 from ..classify import canonical_property_type
 from ..http_client import get_session
@@ -84,10 +85,6 @@ SALE_KEYWORDS = (
     "للبيع",
 )
 
-FURNISHED_KEYWORDS = ("meublé", "meublee", "meublée", "furnished")
-TERRACE_KEYWORDS = ("terrasse", "terrace", "balcon", "balkon", "balkony")
-POOL_KEYWORDS = ("piscine", "pool")
-GARAGE_KEYWORDS = ("garage", "parking couvert")
 BUILDABLE_KEYWORDS = ("constructible", "buildable", "قابل للبناء")
 ROAD_ACCESS_KEYWORDS = (
     "accès route",
@@ -184,13 +181,8 @@ def parse_rooms(description, title):
 
 
 def parse_house_features(title, description):
-    text = f"{title} {description}"
-    return {
-        "garage": has_keyword(text, GARAGE_KEYWORDS),
-        "furnished": has_keyword(text, FURNISHED_KEYWORDS),
-        "terrace": has_keyword(text, TERRACE_KEYWORDS),
-        "pool": has_keyword(text, POOL_KEYWORDS),
-    }
+    # Shared, negation-aware extractor so tayara/mubawab/expat all agree.
+    return extract_amenities_present(f"{title} {description}")
 
 
 def is_real_estate_listing(ad):

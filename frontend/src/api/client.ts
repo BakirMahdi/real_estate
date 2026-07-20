@@ -205,6 +205,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ message, property_id: propertyId ?? null }),
     }),
+  getFavorites: () => request<PropertyListResponse>("/favorites"),
+  getFavoriteStatus: (propertyId: number) =>
+    request<{ is_favorite: boolean }>(`/favorites/${propertyId}/status`),
+  addFavorite: (propertyId: number) =>
+    request<{ message: string }>(`/favorites/${propertyId}`, { method: "POST" }),
+  removeFavorite: (propertyId: number) =>
+    request<{ message: string }>(`/favorites/${propertyId}`, { method: "DELETE" }),
   getKpis: () =>
     request<{
       properties_by_type: Record<string, number>;

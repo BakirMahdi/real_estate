@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Home } from "lucide-react";
 import { api } from "../api/client";
 import { governorateOf, GOVERNORATE_NAMES } from "../lib/format";
@@ -10,19 +11,61 @@ import { useLang } from "../lib/i18n";
 
 const PAGE_SIZE = 12;
 
-const defaultFilters: SearchFilters = {
-  limit: PAGE_SIZE,
-  offset: 0,
-};
+// The active search lives in the URL query string, not component state, so
+// leaving for a property page and pressing "retour" restores the exact search
+// and page (browser back re-reads these params) instead of resetting to page 1
+// with no filters. It also makes a given search shareable/bookmarkable.
+const STRING_KEYS = ["city", "property_type", "listing_type", "query", "subcategory"] as const;
+const NUMERIC_KEYS = ["min_price", "max_price", "min_area", "max_area", "bedrooms"] as const;
+
+function filtersFromParams(params: URLSearchParams): SearchFilters {
+  const filters: SearchFilters = { limit: PAGE_SIZE, offset: 0 };
+  for (const key of STRING_KEYS) {
+    const value = params.get(key);
+    if (value) filters[key] = value;
+  }
+  for (const key of NUMERIC_KEYS) {
+    const value = params.get(key);
+    if (value && !Number.isNaN(Number(value))) filters[key] = Number(value);
+  }
+  // Pages are 1-based in the URL for readability; page 1 (the default) is
+  // omitted so a fresh search stays at a clean `/annonces`.
+  const page = Number(params.get("page"));
+  if (Number.isFinite(page) && page > 1) filters.offset = (page - 1) * PAGE_SIZE;
+  return filters;
+}
+
+function paramsFromFilters(filters: SearchFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const key of STRING_KEYS) {
+    if (filters[key]) params.set(key, String(filters[key]));
+  }
+  for (const key of NUMERIC_KEYS) {
+    if (filters[key] != null) params.set(key, String(filters[key]));
+  }
+  const page = Math.floor((filters.offset ?? 0) / PAGE_SIZE) + 1;
+  if (page > 1) params.set("page", String(page));
+  return params;
+}
 
 export function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [governorates, setGovernorates] = useState<string[]>([]);
-  const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { t } = useLang();
+
+  // `replace` (not push) so typing in the search box or paging doesn't stack a
+  // history entry per keystroke; the listings page stays a single entry that
+  // always reflects the current search, and returning from a property page
+  // lands right back on it.
+  const applyFilters = useCallback(
+    (next: SearchFilters) => setSearchParams(paramsFromFilters(next), { replace: true }),
+    [setSearchParams],
+  );
 
   const loadGovernorates = useCallback(async () => {
     try {
@@ -62,14 +105,13 @@ export function HomePage() {
     loadProperties(filters);
   }, [filters, loadProperties]);
 
-  const resetFilters = () => setFilters(defaultFilters);
+  const resetFilters = () => setSearchParams(new URLSearchParams(), { replace: true });
 
   const currentPage = Math.floor((filters.offset ?? 0) / PAGE_SIZE) + 1;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const goToPage = (page: number) => {
-    const next = { ...filters, offset: (page - 1) * PAGE_SIZE };
-    setFilters(next);
+    applyFilters({ ...filters, offset: (page - 1) * PAGE_SIZE });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -119,7 +161,7 @@ export function HomePage() {
         <FilterBar
           filters={filters}
           governorates={governorates}
-          onChange={setFilters}
+          onChange={applyFilters}
           onReset={resetFilters}
         />
       </div>

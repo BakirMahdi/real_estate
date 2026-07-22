@@ -346,9 +346,6 @@ export function PropertyPage() {
           {/* Title and Price */}
           <div className="mb-6 border-b border-slate-100 pb-6">
             <div className="mb-3 flex flex-wrap gap-2">
-              <span className="rounded-lg bg-brand-500/15 px-3 py-1 text-xs font-semibold text-slate-900">
-                {sourceLabel(property.source)}
-              </span>
               <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                 {subcategoryLabel(property.subcategory, property.property_type)}
               </span>
@@ -374,7 +371,6 @@ export function PropertyPage() {
               value={governorateOf(property)}
             />
             <DetailItem icon={Maximize2} label={t("prop.area")} value={formatArea(property.area)} />
-            <DetailItem icon={Tag} label={t("prop.source")} value={sourceLabel(property.source)} />
             <DetailItem icon={Building} label={t("prop.type")} value={subcategoryLabel(property.subcategory, property.property_type)} />
             <DetailItem
               icon={Tag}

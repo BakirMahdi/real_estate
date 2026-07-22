@@ -10,6 +10,7 @@ import pandas as pd
 from ..neighborhood import resolve_neighborhood
 from ..governorate import resolve_delegation
 from ..land_features import LAND_FEATURE_NAMES, extract_land_features
+from ..building_features import BUILDING_FEATURE_NAMES, extract_building_features
 
 # Order matters: the trained pipeline addresses columns positionally after
 # the ColumnTransformer, with categoricals first.
@@ -20,8 +21,14 @@ from ..land_features import LAND_FEATURE_NAMES, extract_land_features
 CATEGORICAL_FEATURES = ["listing_type", "property_type", "governorate", "city", "subcategory", "neighborhood", "delegation"]
 # The land_* flags are derived land-use/legal/servicing signal (NaN for
 # non-land, so ignored there); they carry the attributes that otherwise make
-# land the least predictable segment. See land_features.py.
-NUMERIC_FEATURES = ["area", "bedrooms", "garage", "furnished", "terrace", "pool"] + LAND_FEATURE_NAMES
+# land the least predictable segment. See land_features.py. The bldg_* flags
+# are the built-property mirror (standing, vue mer, ascenseur, floor…), NaN
+# for land. See building_features.py.
+NUMERIC_FEATURES = (
+    ["area", "bedrooms", "garage", "furnished", "terrace", "pool"]
+    + LAND_FEATURE_NAMES
+    + BUILDING_FEATURE_NAMES
+)
 ALL_FEATURES = CATEGORICAL_FEATURES + NUMERIC_FEATURES
 
 # Source columns to_feature_frame reads to derive `neighborhood` / `delegation`
@@ -69,13 +76,28 @@ def to_feature_frame(records) -> pd.DataFrame:
     )
     for name in LAND_FEATURE_NAMES:
         df[name] = land[name].to_numpy()
+    building = pd.DataFrame(
+        [
+            extract_building_features(property_type, title, description)
+            for property_type, title, description in zip(
+                df["property_type"], df["title"], df["description"]
+            )
+        ],
+        index=df.index,
+    )
+    for name in BUILDING_FEATURE_NAMES:
+        df[name] = building[name].to_numpy()
 
     for col in ALL_FEATURES:
         if col not in df.columns:
             df[col] = None
     df = df[ALL_FEATURES].copy()
 
-    for col in ["garage", "furnished", "terrace", "pool", "bedrooms", "area"] + LAND_FEATURE_NAMES:
+    for col in (
+        ["garage", "furnished", "terrace", "pool", "bedrooms", "area"]
+        + LAND_FEATURE_NAMES
+        + BUILDING_FEATURE_NAMES
+    ):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     for col in CATEGORICAL_FEATURES:
         df[col] = df[col].astype("object")

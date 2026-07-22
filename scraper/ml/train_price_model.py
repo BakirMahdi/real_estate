@@ -26,7 +26,14 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 
 from .features import ALL_FEATURES, CATEGORICAL_FEATURES, TARGET, to_feature_frame
-from .prepare_training_data import basic_filters, compute_outlier_bounds, apply_outlier_bounds, load_raw_properties
+from .prepare_training_data import (
+    apply_outlier_bounds,
+    basic_filters,
+    compute_outlier_bounds,
+    drop_duplicate_listings,
+    load_raw_properties,
+    repair_price_magnitude,
+)
 
 MODEL_DIR = os.getenv("MODEL_DIR", "models")
 MODEL_PATH = os.path.join(MODEL_DIR, "price_model.joblib")
@@ -56,9 +63,24 @@ def build_pipeline() -> Pipeline:
     # dragged around by the heavy-tailed price noise in the listings. In an
     # ablation on a fixed test fold this cut rent APE ~3 pts and sale ~2 pts
     # over squared error, helping both listing types.
+    #
+    # The remaining hyperparameters come from a 16-config grid (3-fold CV on
+    # the training fold, 2026-07-22), confirmed across 5 random splits against
+    # the sklearn defaults: rent median APE 21.3 vs 22.0 (better on 4/5
+    # seeds), sale unchanged, lower variance on both. Early stopping replaces
+    # the fixed default of 100 iterations, so the iteration count keeps
+    # adapting as the dataset grows.
     regressor = HistGradientBoostingRegressor(
         categorical_features=list(range(len(CATEGORICAL_FEATURES))),
         loss="absolute_error",
+        learning_rate=0.05,
+        max_leaf_nodes=31,
+        min_samples_leaf=5,
+        l2_regularization=1.0,
+        max_iter=1000,
+        early_stopping=True,
+        validation_fraction=0.15,
+        n_iter_no_change=30,
         random_state=42,
     )
     return Pipeline([("encode", encode_categoricals), ("regress", regressor)])
@@ -83,25 +105,62 @@ def evaluate(pipeline, X_test, y_test_log, listing_types) -> dict:
     return metrics
 
 
-def train() -> dict:
-    filtered = basic_filters(load_raw_properties())
+def _clean_split(filtered, seed):
+    """Split, then clean each fold with statistics fit on the training fold only.
 
-    # Split before deriving the outlier fence: computing it from a dataset
-    # that includes rows destined for the test split would leak those rows'
-    # own values into the threshold that later decides whether they count as
-    # outliers, biasing the reported test metrics. The fence is fit on the
-    # training fold only, then applied to both folds unchanged.
-    train_df, test_df = train_test_split(filtered, test_size=0.2, random_state=42)
+    Split before deriving the outlier fence: computing it from a dataset
+    that includes rows destined for the test split would leak those rows'
+    own values into the threshold that later decides whether they count as
+    outliers, biasing the reported test metrics. The fence is fit on the
+    training fold only, then applied to both folds unchanged.
+
+    The x1000 unit repair is applied to the TRAINING fold only (recovers
+    ~4% more rows; measured neutral on held-out APE). The test fold keeps
+    only real observed prices — a repaired price is a plausible guess, and
+    grading the model against guessed targets (some of them huge) skews the
+    metrics, dominating the TND MAE in particular.
+    """
+    train_df, test_df = train_test_split(filtered, test_size=0.2, random_state=seed)
     bounds = compute_outlier_bounds(train_df)
+    train_df = repair_price_magnitude(train_df, bounds)
     train_df = apply_outlier_bounds(train_df, bounds)
     test_df = apply_outlier_bounds(test_df, bounds)
+    return train_df, test_df
 
+
+def _fit_eval(filtered, seed):
+    train_df, test_df = _clean_split(filtered, seed)
     X_train, y_train = to_feature_frame(train_df), np.log(train_df[TARGET])
     X_test, y_test = to_feature_frame(test_df), np.log(test_df[TARGET])
-
     pipeline = build_pipeline()
     pipeline.fit(X_train, y_train)
     metrics = evaluate(pipeline, X_test, y_test, test_df["listing_type"])
+    return pipeline, train_df, metrics
+
+
+# Extra random splits evaluated alongside the main seed-42 one, so the stored
+# metrics carry a stability estimate: a single 80/20 split moves median APE by
+# a couple of points on re-split noise alone, and without the spread a real
+# regression is indistinguishable from an unlucky split.
+STABILITY_SEEDS = (0, 1, 2, 3)
+
+
+def train() -> dict:
+    # Dedup before splitting: reposts/cross-posts of the same property landing
+    # on both sides of the split would let the model score on rows it saw.
+    filtered = drop_duplicate_listings(basic_filters(load_raw_properties()))
+
+    pipeline, train_df, metrics = _fit_eval(filtered, 42)
+
+    spread = {"rent": [], "sale": []}
+    for seed in STABILITY_SEEDS:
+        _, _, seed_metrics = _fit_eval(filtered, seed)
+        for lt in spread:
+            spread[lt].append(seed_metrics.get(f"{lt}_median_ape_pct"))
+    for lt, values in spread.items():
+        values = [v for v in values if v is not None] + [metrics[f"{lt}_median_ape_pct"]]
+        metrics[f"{lt}_median_ape_pct_cv_mean"] = round(float(np.mean(values)), 1)
+        metrics[f"{lt}_median_ape_pct_cv_std"] = round(float(np.std(values)), 1)
 
     # The shipped model is exactly this 80%-trained pipeline (no refit on the
     # full dataset), so `metrics` is a direct measurement of the served

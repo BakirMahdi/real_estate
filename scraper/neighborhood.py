@@ -35,17 +35,42 @@ _GAZETTEER = {
     "Ain Zaghouan": ["ain zaghouan", "ain zaghouane"],
     "La Soukra": ["la soukra", "soukra"],
     # --- Grand Tunis: residential ---
-    "Mutuelleville": ["mutuelleville"],
+    "Mutuelleville": ["mutuelleville", "mutuelle ville"],
     "Montplaisir": ["montplaisir"],
+    "Centre Urbain Nord": ["centre urbain nord", "centre urbain"],
+    "Tunis Centre": ["tunis ville", "tunis centre"],
+    "Lafayette": ["centre ville lafayette", "lafayette", "la fayette"],
+    "Le Belvedere": ["tunis belvedere", "belvedere"],
+    "Ettahrir": ["ettahrir superieur", "ettahrir", "el tahrir"],
+    "El Agba": ["el agba", "agba"],
+    "Alain Savary": ["alain savary"],
+    "Cite Olympique": ["cite olympique"],
+    "Cite Des Jardins": ["cite des jardins", "cite jardins", "cite jardin"],
+    "Monfleury": ["monfleury", "montfleury"],
+    "Khaznadar": ["khaznadar"],
+    "Kheireddine Pacha": ["kheireddine pacha", "kheireddine"],
+    "Sidi Bechir": ["sidi el bechir", "sidi bechir"],
+    "Ibn Sina": ["ibn sina"],
+    "Bellevue": ["bellevue"],
+    "Sejoumi": ["sejoumi", "sijoumi"],
+    "Sidi Daoud": ["sidi daoud"],
     "El Omrane Superieur": ["el omrane superieur", "omrane superieur"],
     "El Omrane": ["el omrane"],
     "Cite El Khadra": ["cite el khadra", "cité el khadra", "el khadra"],
     "Le Bardo": ["le bardo", "bardo"],
-    "Ariana Ville": ["ariana ville"],
+    "Ariana Ville": ["ariana ville", "ariana centre"],
     "Raoued": ["raoued"],
     "Borj Louzir": ["borj louzir"],
-    "Riadh El Andalous": ["riadh el andalous", "riadh andalous", "riadh el andalus"],
+    "Riadh El Andalous": [
+        "riadh el andalous", "riadh andalous", "riadh el andalus", "riadh al andalous",
+    ],
     "Chotrana": ["chotrana"],
+    "Cite El Ghazela": ["cite el ghazela", "el ghazela", "ghazela"],
+    "Medina Jedida": ["medina jedida"],
+    "Cite Ennkhilet": ["cite ennkhilet", "cite el nakhilet", "ennkhilet", "nakhilet"],
+    "Ariana Essoughra": ["ariana essoughra", "ariana soughra", "petite ariana"],
+    "Nouvelle Ariana": ["nouvelle ariana"],
+    "Cite Hedi Nouira": ["cite hedi nouira"],
     # --- Grand Tunis south (Ben Arous) ---
     "Ezzahra": ["ezzahra", "ez zahra"],
     "Rades": ["rades"],
@@ -59,22 +84,51 @@ _GAZETTEER = {
     "Yasmine Hammamet": ["yasmine hammamet"],
     "Hammamet": ["hammamet"],
     "Nabeul Ville": ["nabeul ville"],
+    "Neapolis": ["neapolis"],
+    "Cite El Wafa": ["cite el wafa"],
+    "Sidi El Mahrsi": ["sidi el mahrsi", "sidi mahrsi"],
     "Dar Chaabane": ["dar chaabane", "dar chaaban"],
     "El Maamoura": ["el maamoura", "maamoura"],
     "Kelibia": ["kelibia"],
     "Soliman": ["soliman"],
     # --- Sousse / Monastir sahel ---
     "Sahloul": ["sahloul"],
-    "Khezama": ["khezama"],
+    "Khezama": ["khezama", "khzema"],
     "Port El Kantaoui": ["port el kantaoui", "kantaoui"],
     "Hammam Sousse": ["hammam sousse"],
-    "Chott Meriem": ["chott meriem", "chott mariem", "chatt meriem"],
+    "Chott Meriem": ["chott meriem", "chott mariem", "chatt meriem", "chatt mariem"],
     "Skanes": ["skanes"],
     "Kantaoui": ["kantaoui"],
+    "Sousse Medina": ["sousse medina", "medina sousse"],
+    "Sousse Riadh": ["sousse riadh"],
+    "Sousse Jaouhara": ["sousse jaouhara", "sousse jawhara"],
+    "Sousse Corniche": ["sousse corniche", "corniche sousse"],
+    "Sidi Abdelhamid": ["sousse sidi abdelhamid", "sidi abdelhamid"],
+    "Zaouiet Sousse": ["zaouiet sousse", "zaouit sousse"],
+    "Bouhsina": ["bouhssina", "bouhsina"],
     # --- Sfax ---
     "Sakiet Ezzit": ["sakiet ezzit"],
     "Sakiet Eddaier": ["sakiet eddaier"],
     "Sfax Ville": ["sfax ville"],
+    # Sfax addresses are given as the arterial road ("Route de Teniour km 8"),
+    # not a named quarter, and the road is what locates a parcel there - each
+    # one runs out of the city into progressively cheaper land. Sfax was the
+    # worst-scoring governorate (47.8% APE) and most of its rows had nothing
+    # finer than the governorate before these.
+    "Route Manzel Chaker": ["route manzel chaker", "route menzel chaker"],
+    "Route Teniour": ["route teniour", "route taniour"],
+    "Route Lafrane": ["route lafrane", "route el afrane", "route afrane"],
+    "Route Matar": ["route matar"],
+    "Route Saltnia": ["route saltnia", "route saltania"],
+    "Route Sokra": ["route sokra", "route soukra"],
+    "Route Mharza": ["route mharza"],
+    "Route Gabes": ["route de gabes", "route gabes"],
+    "Route Tunis": ["route de tunis", "route tunis"],
+    "Route Mahdia": ["route mehdia", "route mahdia", "route de mahdia"],
+    "Route Aeroport": ["route de l aeroport", "route aeroport"],
+    "Avenue Teboulbi": ["avenue teboulbi", "teboulbi"],
+    # --- Bizerte ---
+    "Bizerte Corniche": ["bizerte le corniche", "bizerte corniche"],
     # --- Djerba / south ---
     "Houmt Souk": ["houmt souk"],
     "Midoun": ["midoun"],
@@ -95,6 +149,7 @@ _add_numbered("El Manar", ["el manar", "manar"], 3)
 _add_numbered("Ennasr", ["ennasr", "el nasr", "cite ennasr"], 2)
 _add_numbered("El Mourouj", ["el mourouj", "mourouj"], 6)
 _add_numbered("Les Berges du Lac", ["berges du lac", "les berges du lac"], 2)
+_add_numbered("Charguia", ["charguia", "chargia"], 2)
 
 # Flattened (alias, canonical) pairs, longest alias first so the most specific
 # locality wins when several are substrings of one another.

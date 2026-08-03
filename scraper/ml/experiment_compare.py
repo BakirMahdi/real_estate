@@ -23,7 +23,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 
 from .prepare_training_data import compute_outlier_bounds
-from .train_price_model import evaluate
+from .train_price_model import evaluate_single_model as evaluate
 from .experiment_improve_ape import BASE_NUMERIC, apply_fence, load_base, make_X, make_pipeline
 
 

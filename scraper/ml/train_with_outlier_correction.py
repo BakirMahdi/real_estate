@@ -30,13 +30,13 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-from .features import TARGET, to_feature_frame
+from .features import ALL_FEATURES, TARGET, to_feature_frame
 from .prepare_training_data import (
     basic_filters,
     compute_outlier_bounds,
     load_raw_properties,
 )
-from .train_price_model import build_pipeline, evaluate
+from .train_price_model import build_pipeline, evaluate_single_model as evaluate
 
 
 def split_inliers_outliers(df: pd.DataFrame, bounds: pd.DataFrame):
@@ -103,7 +103,7 @@ def run() -> None:
     y_test = np.log(test_inliers[TARGET])
 
     # ---- STEP 1: baseline, outliers dropped -----------------------------------
-    baseline = build_pipeline()
+    baseline = build_pipeline(ALL_FEATURES)
     baseline.fit(to_feature_frame(train_inliers), np.log(train_inliers[TARGET]))
     baseline_metrics = evaluate(baseline, X_test, y_test, test_inliers["listing_type"])
 
@@ -148,7 +148,7 @@ def run() -> None:
 
     # ---- STEP 3: retrain on inliers + corrected outliers ----------------------
     augmented = pd.concat([train_inliers, corrected[train_inliers.columns]], ignore_index=True)
-    retrained = build_pipeline()
+    retrained = build_pipeline(ALL_FEATURES)
     retrained.fit(to_feature_frame(augmented), np.log(augmented[TARGET]))
     corrected_metrics = evaluate(retrained, X_test, y_test, test_inliers["listing_type"])
 

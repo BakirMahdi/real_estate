@@ -36,6 +36,22 @@ _WEEKLY = re.compile(
     r"|\bhebdomadaire"
     r"|\d[\s.,]*(?:dt|tnd|dinars?)?\s*(?:/|la\s+)semaine\b"  # "800 la semaine"
 )
+# Vacation lets that never name a period but whose *phrasing* is unambiguously
+# short-term. Kept anchored ("location de vacances", not a bare "vacances")
+# because a bare mention is exactly the ambiguous case the module docstring
+# refuses to act on - "libre pour les vacances" is a monthly lease. The Arabic
+# markers are the same idea: "بالليلة" (by the night), "باليوم" (by the day),
+# "للاصطياف" (for summering). These were found sitting in the rent training
+# data at a median 180 TND against 1,900 TND for ordinary monthly leases.
+_SEASONAL = re.compile(
+    r"\blocations?\s+(?:de\s+)?vacances?\b"
+    r"|\blocations?\s+estivales?\b"
+    r"|\blocations?\s+saisonnieres?\b"
+    r"|\bcourt\s+sejour\b"
+    r"|\bpour\s+vos\s+vacances\b"
+    r"|\bper\s+night\b|\bnightly\b"
+    r"|بالليلة|باليوم|للاصطياف|كراء\s*يومي"
+)
 
 
 def _normalize(text) -> str:
@@ -46,8 +62,13 @@ def _normalize(text) -> str:
 
 
 def detect_rental_period(title=None, description=None):
-    """Return "nightly" or "weekly" when the text prices the let short-term,
-    else None (no explicit period — assumed monthly, the sites' default).
+    """Return "nightly", "weekly" or "seasonal" when the text prices the let
+    short-term, else None (no explicit period — assumed monthly, the sites'
+    default).
+
+    Callers treat any non-None value the same way (exclude from monthly-rent
+    training); the distinct labels are kept because they say *why* a row was
+    excluded, which matters when auditing the filter.
 
     Only meaningful for rent listings; callers should not bother for sales.
     """
@@ -58,4 +79,6 @@ def detect_rental_period(title=None, description=None):
         return "nightly"
     if _WEEKLY.search(text):
         return "weekly"
+    if _SEASONAL.search(text):
+        return "seasonal"
     return None

@@ -21,7 +21,7 @@ from ..db import get_conn
 from ..neighborhood import resolve_neighborhood
 from .features import CATEGORICAL_FEATURES, NUMERIC_FEATURES, TARGET
 from .prepare_training_data import basic_filters, compute_outlier_bounds, apply_outlier_bounds
-from .train_price_model import evaluate
+from .train_price_model import evaluate_single_model as evaluate
 
 
 def load_with_text():

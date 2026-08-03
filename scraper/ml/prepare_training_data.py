@@ -80,7 +80,7 @@ def load_raw_properties() -> pd.DataFrame:
         conn.close()
 
 
-def basic_filters(df: pd.DataFrame) -> pd.DataFrame:
+def basic_filters(df: pd.DataFrame, require_area: bool = True) -> pd.DataFrame:
     """Drop rows that can't teach the model anything (missing required fields,
     a placeholder/non-positive price or area), plus rent listings priced per
     night/week (vacation lets): the model predicts *monthly* rent, and a
@@ -88,10 +88,19 @@ def basic_filters(df: pd.DataFrame) -> pd.DataFrame:
     fence can be trusted to catch. No group statistics are involved, so this
     is safe to apply before any train/test split.
 
+    `require_area=False` keeps rows whose surface is unknown, normalizing a
+    missing/non-positive area to NaN. Those rows can't train a price-per-m2
+    model, but they are exactly the population the no-area fallback model
+    serves (~5,200 rows, a third of the catalogue), and excluding them meant
+    that model was fit on none of the listings it actually scores.
+
     Returns a new frame; `df` is not mutated.
     """
-    df = df.dropna(subset=["price", "area", "governorate"]).copy()
-    df = df[df["area"] > 0]
+    df = df.dropna(subset=["price", "governorate"]).copy()
+    df["area"] = pd.to_numeric(df["area"], errors="coerce")
+    df.loc[df["area"] <= 0, "area"] = np.nan
+    if require_area:
+        df = df.dropna(subset=["area"])
 
     is_sale = df["listing_type"] == "sale"
     df = df[
@@ -219,6 +228,51 @@ def apply_outlier_bounds(df: pd.DataFrame, bounds: pd.DataFrame) -> pd.DataFrame
         joined["lower"].fillna(-np.inf), joined["upper"].fillna(np.inf)
     )
     return df[keep.to_numpy()].reset_index(drop=True)
+
+
+def compute_price_bounds(
+    df: pd.DataFrame, iqr_multiplier: float = 1.5, min_group_size: int = MIN_OUTLIER_GROUP_SIZE
+) -> pd.DataFrame:
+    """Per (listing_type, property_type) Tukey fence on log(price) itself.
+
+    The price-per-m2 fence is the sharper instrument, but it can't judge a row
+    with no surface. This is the fallback for that population: coarser (it
+    can't tell a cheap big plot from an expensive small one) yet still enough
+    to catch the orders-of-magnitude garbage. Same training-fold-only rule as
+    compute_outlier_bounds — see its docstring for why that matters.
+    """
+    tmp = df.dropna(subset=["price"]).copy()
+    tmp["log_price"] = np.log(tmp["price"])
+    grouped = tmp.groupby(["listing_type", "property_type"])["log_price"]
+    bounds = grouped.agg(q1=lambda x: x.quantile(0.25), q3=lambda x: x.quantile(0.75), n="count")
+    iqr = bounds["q3"] - bounds["q1"]
+    bounds["lower"] = bounds["q1"] - iqr_multiplier * iqr
+    bounds["upper"] = bounds["q3"] + iqr_multiplier * iqr
+
+    lt_grouped = tmp.groupby("listing_type")["log_price"]
+    lt_bounds = lt_grouped.agg(q1=lambda x: x.quantile(0.25), q3=lambda x: x.quantile(0.75))
+    lt_iqr = lt_bounds["q3"] - lt_bounds["q1"]
+    lt_bounds["lower"] = lt_bounds["q1"] - iqr_multiplier * lt_iqr
+    lt_bounds["upper"] = lt_bounds["q3"] + iqr_multiplier * lt_iqr
+
+    too_small = bounds["n"] < min_group_size
+    small_lt = bounds.index.get_level_values("listing_type")[too_small]
+    bounds.loc[too_small, "lower"] = lt_bounds["lower"].reindex(small_lt).to_numpy()
+    bounds.loc[too_small, "upper"] = lt_bounds["upper"].reindex(small_lt).to_numpy()
+    return bounds[["lower", "upper"]]
+
+
+def apply_price_bounds(df: pd.DataFrame, bounds: pd.DataFrame) -> pd.DataFrame:
+    """Drop rows whose log(price) falls outside their group's precomputed
+    bounds (from compute_price_bounds). A group with no entry is left
+    unfiltered, matching apply_outlier_bounds' behaviour.
+    """
+    joined = df.join(bounds, on=["listing_type", "property_type"])
+    log_price = np.log(pd.to_numeric(df["price"], errors="coerce").to_numpy(dtype="float64"))
+    keep = (log_price >= joined["lower"].fillna(-np.inf).to_numpy()) & (
+        log_price <= joined["upper"].fillna(np.inf).to_numpy()
+    )
+    return df[keep].reset_index(drop=True)
 
 
 def clean_for_training(df: pd.DataFrame, iqr_multiplier: float = 1.5) -> pd.DataFrame:

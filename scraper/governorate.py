@@ -153,6 +153,35 @@ DELEGATIONS = {
     "mellita": "Médenine",
     "el ksour": "Le Kef", "sers": "Le Kef",
     "rohia": "Siliana", "el aroussa": "Siliana",
+    # --- Sub-divided city delegations the sources emit verbatim ---
+    # Tayara/Mubawab label big cities by their administrative sub-delegation
+    # ("Bizerte Nord", "Sousse Riadh", "Gabès Sud"). Without these the whole
+    # string failed to match and resolve_delegation fell back to the
+    # governorate, i.e. the row lost every location signal finer than the
+    # governorate it already had. These were the highest-volume misses.
+    "bizerte nord": "Bizerte", "bizerte sud": "Bizerte", "bizerte ville": "Bizerte",
+    "bizerte centre ville": "Bizerte", "bizerte centre": "Bizerte",
+    "sousse riadh": "Sousse", "sousse jaouhara": "Sousse", "sousse jawhara": "Sousse",
+    "sousse medina": "Sousse", "medina sousse": "Sousse", "sousse ville": "Sousse",
+    "sidi abdelhamid": "Sousse", "zaouiet sousse": "Sousse", "zaouit sousse": "Sousse",
+    "sfax sud": "Sfax", "sfax ouest": "Sfax", "sfax medina": "Sfax", "sfax nord": "Sfax",
+    "el hajeb": "Sfax", "merkez kamoun": "Sfax", "merkez chaabouni": "Sfax",
+    "oued chaabouni": "Sfax",
+    "gabes ville": "Gabès", "gabes sud": "Gabès", "gabes nord": "Gabès",
+    "gabes medina": "Gabès",
+    "kairouan ville": "Kairouan", "kairouan nord": "Kairouan", "kairouan sud": "Kairouan",
+    "mansourah": "Kairouan",
+    "gafsa sud": "Gafsa", "gafsa nord": "Gafsa",
+    "mahdia ville": "Mahdia", "monastir ville": "Monastir",
+    "medina monastir": "Monastir", "zaouit ksibat thrayett": "Monastir",
+    "ksibet thrayett": "Monastir",
+    "beja nord": "Béja", "beja sud": "Béja",
+    "le kef ouest": "Le Kef", "le kef est": "Le Kef",
+    "kasserine nord": "Kasserine", "kasserine sud": "Kasserine",
+    # Spelling variants of towns already listed above, as the sources write them.
+    "djedeida": "Manouba", "kalaat andalous": "Ariana",
+    "hammam chott": "Ben Arous", "ez zeriba": "Zaghouan",
+    "tezdaine": "Médenine",
 }
 
 

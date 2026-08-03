@@ -35,7 +35,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder
 
 from .features import CATEGORICAL_FEATURES
-from .train_price_model import evaluate
+from .train_price_model import evaluate_single_model as evaluate
 from .prepare_training_data import (
     MIN_SALE_PRICE,
     MIN_RENT_PRICE,

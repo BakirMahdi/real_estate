@@ -1,6 +1,6 @@
 """One-off backfill: re-run the hardened extraction logic (area, bedrooms,
 listing_type, amenities) against every already-scraped row and correct any that
-were parsed wrong by the bugs fixed in scraper/scrapers/{tayara,mubawab,expat}.py
+were parsed wrong by the bugs fixed in scraper/scrapers/{tayara,mubawab}.py
 (the Arabic-surface-in-title miss, the "mois +230 caution" -> 230-bedroom
 false match, the land-ad rent/sale default fallback) and by the shared
 negation-aware amenity extractor (which stops "non meublé" being read as
@@ -28,7 +28,6 @@ from .scrapers.tayara import RENT_KEYWORDS as TAYARA_RENT_KEYWORDS
 from .scrapers.tayara import SALE_KEYWORDS as TAYARA_SALE_KEYWORDS
 from .scrapers.mubawab import RENT_KEYWORDS as MUBAWAB_RENT_KEYWORDS
 from .scrapers.mubawab import SALE_KEYWORDS as MUBAWAB_SALE_KEYWORDS
-from .scrapers.expat import _RENT_PATH_KEYWORDS, _SALE_PATH_KEYWORDS
 
 AREA_BOUNDS = (1, 1_000_000)
 BEDROOMS_BOUNDS = (0, 20)
@@ -71,19 +70,6 @@ def _score_listing_type(source, title, description, url, property_type):
             return "rent"
         if "a-vendre" in text or "vendre" in url_lower:
             return "sale"
-    elif source == "expat":
-        url_lower = (url or "").lower()
-        for kw in _SALE_PATH_KEYWORDS:
-            if kw in url_lower:
-                return "sale"
-        for kw in _RENT_PATH_KEYWORDS:
-            if kw in url_lower:
-                return "rent"
-        if any(kw in text for kw in ["vente", "a vendre", "vendre"]):
-            return "sale"
-        if any(kw in text for kw in ["location", "a louer", "louer"]):
-            return "rent"
-
     if property_type == "land":
         return "sale"
     return None
@@ -123,8 +109,8 @@ def run(apply_changes=False):
 
         # Area/bedrooms re-derivation only for Tayara, whose original values
         # came from free-text parsing we can safely redo from the stored
-        # title/description. Mubawab/Expat area & bedrooms came from
-        # structured page elements we no longer have, so those are only
+        # title/description. Mubawab area & bedrooms came from structured page
+        # elements we no longer have, so those are only
         # bound-checked (clearly-corrupt values nulled out), never re-derived.
         if source == "tayara":
             new_area = _bounded(tayara_parse_area(f"{r['title']} {r['description']}"), AREA_BOUNDS)
@@ -147,7 +133,7 @@ def run(apply_changes=False):
             if bounded_area != r["area"]:
                 changes.append((pid, "area", r["area"], bounded_area))
 
-            # Mubawab/Expat bedrooms came from structured page chips we no
+            # Mubawab bedrooms came from structured page chips we no
             # longer have, so an existing value is only bound-checked (a
             # clearly-corrupt one gets nulled), never re-derived. But a large
             # share of non-land rows never carried a chip value at all (NULL);
@@ -180,7 +166,7 @@ def run(apply_changes=False):
                     if new_val != r[field]:
                         changes.append((pid, field, r[field], new_val))
                 elif r[field] is None:
-                    # Mubawab/Expat amenities partly came from structured chips we
+                    # Mubawab amenities partly came from structured chips we
                     # no longer have; don't clobber an existing value, only fill
                     # the NULLs where the text now gives an explicit signal.
                     changes.append((pid, field, r[field], new_val))

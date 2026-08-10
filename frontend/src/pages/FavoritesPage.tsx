@@ -39,39 +39,39 @@ export function FavoritesPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <section className="mb-10 animate-fade-in">
-        <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
+        <div className="mb-2 flex items-center gap-2 text-sm text-brand-500 dark:text-brand-400">
           <Heart className="h-4 w-4" />
           {t("favorites.eyebrow")}
         </div>
-        <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+        <h1 className="font-display text-4xl font-semibold tracking-tight text-navy-700 dark:text-white sm:text-5xl">
           {t("favorites.title")}
         </h1>
-        <p className="mt-3 max-w-2xl text-slate-500">{t("favorites.subtitle")}</p>
+        <p className="mt-3 max-w-2xl text-gray-700 dark:text-gray-600">{t("favorites.subtitle")}</p>
       </section>
 
       {loading ? (
         <LoadingSpinner label={t("favorites.loading")} />
       ) : error ? (
-        <div className="glass rounded-2xl p-8 text-center">
-          <p className="text-red-600">{error}</p>
+        <div className="glass p-8 text-center">
+          <p className="text-horizonRed-500 dark:text-horizonRed-400">{error}</p>
           <button type="button" onClick={load} className="btn-primary mt-4">
             {t("home.retry")}
           </button>
         </div>
       ) : properties.length === 0 ? (
-        <div className="glass rounded-2xl p-12 text-center">
+        <div className="glass p-12 text-center">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-brand-500/20">
-            <Heart className="h-6 w-6 text-brand-400" />
+            <Heart className="h-6 w-6 text-brand-500 dark:text-brand-400" />
           </div>
-          <p className="mb-6 text-slate-500">{t("favorites.empty")}</p>
+          <p className="mb-6 text-gray-700 dark:text-gray-600">{t("favorites.empty")}</p>
           <Link to="/annonces" className="btn-primary inline-flex">
             {t("favorites.browse")}
           </Link>
         </div>
       ) : (
         <>
-          <p className="mb-6 text-sm text-slate-500">
-            <span className="font-medium text-slate-900">{properties.length}</span>{" "}
+          <p className="mb-6 text-sm text-gray-700 dark:text-gray-600">
+            <span className="font-medium text-navy-700 dark:text-white">{properties.length}</span>{" "}
             {properties.length !== 1 ? t("favorites.count.many") : t("favorites.count.one")}
           </p>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">

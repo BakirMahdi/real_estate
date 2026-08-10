@@ -29,11 +29,17 @@ const fr: Record<string, string> = {
   "common.loading": "Chargement...",
 
   // Header / nav
+  "nav.home": "Accueil",
   "nav.listings": "Annonces",
   "nav.favorites": "Favoris",
   "nav.dashboard": "Dashboard",
   "nav.login": "Connexion",
   "nav.logout": "Déconnexion",
+  "nav.menu": "Menu principal",
+  "nav.openMenu": "Ouvrir le menu",
+  "nav.closeMenu": "Fermer le menu",
+  "nav.darkMode": "Mode sombre",
+  "nav.lightMode": "Mode clair",
   "footer.tagline": "Rews — Agrégateur immobilier Tunisie",
 
   // Welcome page
@@ -45,7 +51,7 @@ const fr: Record<string, string> = {
   "welcome.login": "Se connecter",
   "welcome.f1.title": "Veille multi-sources",
   "welcome.f1.text":
-    "Les annonces de Tayara, Mubawab et Expat-blog réunies et dédupliquées au même endroit.",
+    "Les annonces de Tayara et Mubawab réunies et dédupliquées au même endroit.",
   "welcome.f2.title": "Estimation par IA",
   "welcome.f2.text":
     "Un prix théorique et un score d'investissement calculés pour chaque bien.",
@@ -89,16 +95,21 @@ const fr: Record<string, string> = {
   "error.emailInvalid": "Veuillez saisir une adresse e-mail valide.",
   "error.emailNotVerified":
     "E-mail non vérifié. Un nouveau code vous a été envoyé.",
-  "error.codeInvalid": "Code incorrect ou expiré. Réessayez ou renvoyez un code.",
+  "error.codeInvalid":
+    "Code incorrect ou expiré. Réessayez ou renvoyez un code.",
   "error.emailSendFailed":
     "Impossible d'envoyer l'e-mail de vérification. Réessayez.",
-  "error.rateLimited": "Trop de tentatives. Patientez une minute puis réessayez.",
+  "error.rateLimited":
+    "Trop de tentatives. Patientez une minute puis réessayez.",
   "error.usernameTaken":
     "Ce nom d'utilisateur est déjà utilisé. Choisissez-en un autre ou connectez-vous.",
-  "error.usernameShort": "Le nom d'utilisateur doit contenir au moins 3 caractères.",
+  "error.usernameShort":
+    "Le nom d'utilisateur doit contenir au moins 3 caractères.",
   "error.passwordShort": "Le mot de passe doit contenir au moins 8 caractères.",
-  "error.timeout": "Le serveur met trop de temps à répondre. Veuillez réessayer.",
-  "error.network": "Impossible de contacter le serveur. Vérifiez votre connexion.",
+  "error.timeout":
+    "Le serveur met trop de temps à répondre. Veuillez réessayer.",
+  "error.network":
+    "Impossible de contacter le serveur. Vérifiez votre connexion.",
   "error.generic": "Une erreur est survenue. Veuillez réessayer.",
   "error.google": "Échec de la connexion Google.",
 
@@ -106,7 +117,7 @@ const fr: Record<string, string> = {
   "home.catalog": "Catalogue",
   "home.title": "Trouvez votre bien",
   "home.subtitle":
-    "Annonces immobilières agrégées depuis Tayara, Mubawab et Expat — maisons, appartements et terrains à travers la Tunisie.",
+    "Annonces immobilières agrégées depuis Tayara et Mubawab — maisons, appartements et terrains à travers la Tunisie.",
   "home.found.one": "annonce trouvée",
   "home.found.many": "annonces trouvées",
   "home.loading": "Chargement des annonces...",
@@ -121,7 +132,8 @@ const fr: Record<string, string> = {
   "home.nextPage": "Page suivante",
 
   // Filter bar
-  "filter.search": "Rechercher par mot-clé (ex: piscine, vue mer, villa, Lac 2...)",
+  "filter.search":
+    "Rechercher par mot-clé (ex: piscine, vue mer, villa, Lac 2...)",
   "filter.filters": "Filtres",
   "filter.reset": "Réinitialiser",
   "filter.governorate": "Gouvernorat",
@@ -178,10 +190,12 @@ const fr: Record<string, string> = {
   // Favorites page
   "favorites.eyebrow": "Vos annonces enregistrées",
   "favorites.title": "Mes favoris",
-  "favorites.subtitle": "Retrouvez ici toutes les annonces que vous avez enregistrées.",
+  "favorites.subtitle":
+    "Retrouvez ici toutes les annonces que vous avez enregistrées.",
   "favorites.loading": "Chargement de vos favoris...",
   "favorites.loadError": "Impossible de charger vos favoris.",
-  "favorites.empty": "Vous n'avez pas encore de favoris. Ouvrez une annonce et cliquez sur le cœur pour l'enregistrer ici.",
+  "favorites.empty":
+    "Vous n'avez pas encore de favoris. Ouvrez une annonce et cliquez sur le cœur pour l'enregistrer ici.",
   "favorites.browse": "Parcourir les annonces",
   "favorites.count.one": "favori",
   "favorites.count.many": "favoris",
@@ -225,7 +239,8 @@ const fr: Record<string, string> = {
   "sim.exceeds": "Ce bien dépasse votre capacité d'achat de",
   "sim.searching": "Recherche de biens plus adaptés à votre budget…",
   "sim.alternatives": "Alternatives dans votre budget",
-  "sim.noAlternatives": "Aucun bien similaire trouvé dans votre budget pour le moment.",
+  "sim.noAlternatives":
+    "Aucun bien similaire trouvé dans votre budget pour le moment.",
   "sim.disclaimer":
     "Estimation indicative, hors assurance et frais de dossier. Ne constitue pas une offre de prêt.",
 
@@ -235,7 +250,8 @@ const fr: Record<string, string> = {
   "chat.close": "Fermer",
   "chat.loginPrompt": "Connectez-vous pour discuter avec l'assistant Rews.",
   "chat.login": "Se connecter",
-  "chat.emptyHint": "Posez une question sur l'immobilier en Tunisie, ou sur cette annonce.",
+  "chat.emptyHint":
+    "Posez une question sur l'immobilier en Tunisie, ou sur cette annonce.",
   "chat.sessionExpired": "Session expirée.",
   "chat.reconnect": "Reconnectez-vous",
   "chat.toContinue": "pour continuer.",
@@ -247,7 +263,8 @@ const fr: Record<string, string> = {
 
   // Dashboard (admin)
   "dashboard.authRequired": "Authentification requise",
-  "dashboard.authSubtitle": "Veuillez vous connecter pour accéder au dashboard.",
+  "dashboard.authSubtitle":
+    "Veuillez vous connecter pour accéder au dashboard.",
   "dashboard.passwordPlaceholder": "Mot de passe",
   "dashboard.verifying": "Vérification…",
   "dashboard.signIn": "Se connecter",
@@ -271,6 +288,14 @@ const fr: Record<string, string> = {
   "dashboard.typeStudio": "Studio",
   "dashboard.typeOffice": "Bureau",
   "dashboard.noData": "Aucune donnée disponible",
+  "dashboard.totalLabel": "Total",
+  "dashboard.otherLabel": "Autres",
+  "dashboard.dailyTraffic": "Trafic quotidien",
+  "dashboard.views": "vues",
+  "dashboard.visitors": "visiteurs sur la période",
+  "dashboard.trafficEmpty":
+    "Aucune visite enregistrée pour l'instant. Le graphique se remplit dès que le site reçoit du trafic.",
+  "dashboard.overview": "Vue d'ensemble",
   "dashboard.adsManagement": "Gestion des annonces",
   "dashboard.searchPlaceholder": "Rechercher (nom, localisation, source...)",
   "dashboard.all": "Toutes",
@@ -360,11 +385,17 @@ const en: Record<string, string> = {
   "common.loading": "Loading...",
 
   // Header / nav
+  "nav.home": "Home",
   "nav.listings": "Listings",
   "nav.favorites": "Favorites",
   "nav.dashboard": "Dashboard",
   "nav.login": "Log in",
   "nav.logout": "Log out",
+  "nav.menu": "Main menu",
+  "nav.openMenu": "Open menu",
+  "nav.closeMenu": "Close menu",
+  "nav.darkMode": "Dark mode",
+  "nav.lightMode": "Light mode",
   "footer.tagline": "Rews — Tunisia real estate aggregator",
 
   // Welcome page
@@ -376,7 +407,7 @@ const en: Record<string, string> = {
   "welcome.login": "Log in",
   "welcome.f1.title": "Multi-source aggregation",
   "welcome.f1.text":
-    "Listings from Tayara, Mubawab and Expat-blog gathered and deduplicated in one place.",
+    "Listings from Tayara and Mubawab gathered and deduplicated in one place.",
   "welcome.f2.title": "AI price estimates",
   "welcome.f2.text":
     "A theoretical price and an investment score computed for every property.",
@@ -418,14 +449,18 @@ const en: Record<string, string> = {
   "error.badCredentials": "Incorrect email or password.",
   "error.emailExists": "This email is already registered. Please log in.",
   "error.emailInvalid": "Please enter a valid email address.",
-  "error.emailNotVerified": "Email not verified. A new code has been sent to you.",
+  "error.emailNotVerified":
+    "Email not verified. A new code has been sent to you.",
   "error.codeInvalid": "Incorrect or expired code. Try again or resend a code.",
-  "error.emailSendFailed": "Could not send the verification email. Please try again.",
+  "error.emailSendFailed":
+    "Could not send the verification email. Please try again.",
   "error.rateLimited": "Too many attempts. Please wait a minute and try again.",
-  "error.usernameTaken": "This username is already taken. Pick another one or log in.",
+  "error.usernameTaken":
+    "This username is already taken. Pick another one or log in.",
   "error.usernameShort": "The username must be at least 3 characters long.",
   "error.passwordShort": "The password must be at least 8 characters long.",
-  "error.timeout": "The server is taking too long to respond. Please try again.",
+  "error.timeout":
+    "The server is taking too long to respond. Please try again.",
   "error.network": "Could not reach the server. Check your connection.",
   "error.generic": "Something went wrong. Please try again.",
   "error.google": "Google sign-in failed.",
@@ -434,7 +469,7 @@ const en: Record<string, string> = {
   "home.catalog": "Catalog",
   "home.title": "Find your property",
   "home.subtitle":
-    "Real estate listings aggregated from Tayara, Mubawab and Expat — houses, apartments and land across Tunisia.",
+    "Real estate listings aggregated from Tayara and Mubawab — houses, apartments and land across Tunisia.",
   "home.found.one": "listing found",
   "home.found.many": "listings found",
   "home.loading": "Loading listings...",
@@ -509,7 +544,8 @@ const en: Record<string, string> = {
   "favorites.subtitle": "All the listings you've saved, in one place.",
   "favorites.loading": "Loading your favorites...",
   "favorites.loadError": "Couldn't load your favorites.",
-  "favorites.empty": "You haven't saved any favorites yet. Open a listing and tap the heart to save it here.",
+  "favorites.empty":
+    "You haven't saved any favorites yet. Open a listing and tap the heart to save it here.",
   "favorites.browse": "Browse listings",
   "favorites.count.one": "favorite",
   "favorites.count.many": "favorites",
@@ -553,7 +589,8 @@ const en: Record<string, string> = {
   "sim.exceeds": "This property exceeds your purchasing capacity by",
   "sim.searching": "Searching for properties better suited to your budget…",
   "sim.alternatives": "Alternatives within your budget",
-  "sim.noAlternatives": "No similar property found within your budget at the moment.",
+  "sim.noAlternatives":
+    "No similar property found within your budget at the moment.",
   "sim.disclaimer":
     "Indicative estimate, excluding insurance and processing fees. This is not a loan offer.",
 
@@ -563,7 +600,8 @@ const en: Record<string, string> = {
   "chat.close": "Close",
   "chat.loginPrompt": "Log in to chat with the Rews assistant.",
   "chat.login": "Log in",
-  "chat.emptyHint": "Ask a question about real estate in Tunisia, or about this listing.",
+  "chat.emptyHint":
+    "Ask a question about real estate in Tunisia, or about this listing.",
   "chat.sessionExpired": "Session expired.",
   "chat.reconnect": "Log back in",
   "chat.toContinue": "to continue.",
@@ -599,6 +637,14 @@ const en: Record<string, string> = {
   "dashboard.typeStudio": "Studio",
   "dashboard.typeOffice": "Office",
   "dashboard.noData": "No data available",
+  "dashboard.totalLabel": "Total",
+  "dashboard.otherLabel": "Other",
+  "dashboard.dailyTraffic": "Daily traffic",
+  "dashboard.views": "views",
+  "dashboard.visitors": "visitors over the period",
+  "dashboard.trafficEmpty":
+    "No visits recorded yet. The chart fills in as soon as the site receives traffic.",
+  "dashboard.overview": "Overview",
   "dashboard.adsManagement": "Ad management",
   "dashboard.searchPlaceholder": "Search (name, location, source...)",
   "dashboard.all": "All",
@@ -695,7 +741,10 @@ export function getLang(): Lang {
   return currentLang;
 }
 
-const LangContext = createContext<{ lang: Lang; setLang: (lang: Lang) => void }>({
+const LangContext = createContext<{
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+}>({
   lang: currentLang,
   setLang: () => {},
 });
@@ -719,7 +768,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <LangContext.Provider value={{ lang, setLang }}>{children}</LangContext.Provider>;
+  return (
+    <LangContext.Provider value={{ lang, setLang }}>
+      {children}
+    </LangContext.Provider>
+  );
 }
 
 /** Subscribe a component to the current language. Components must use this

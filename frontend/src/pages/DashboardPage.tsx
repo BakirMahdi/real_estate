@@ -23,6 +23,12 @@ import {
   Globe,
 } from "lucide-react";
 import { API_BASE, api, isAuthenticated, logout } from "../api/client";
+import { Card, StatWidget } from "../components/Card";
+import { DonutChartCard } from "../components/charts/DonutChartCard";
+import {
+  DailyTrafficCard,
+  type TrafficDay,
+} from "../components/charts/DailyTrafficCard";
 import {
   formatArea,
   formatPrice,
@@ -149,10 +155,12 @@ function ArchiveToggle({
         e.stopPropagation();
         onToggle();
       }}
-      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-violet-500/40 ${
-        archived ? "bg-violet-500" : "bg-slate-300"
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-brand-500/40 ${
+        archived ? "bg-brand-500" : "bg-gray-300 dark:bg-navy-600"
       }`}
     >
+      {/* The knob stays white in both modes — it reads as the moving part
+          against the track, and a navy knob on a navy track disappears. */}
       <span
         className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
           archived ? "translate-x-[22px]" : "translate-x-0.5"
@@ -164,17 +172,22 @@ function ArchiveToggle({
 
 const PHASE_ORDER = ["rent", "sale", "land"] as const;
 
+// Status is never carried by colour alone — the icon and the label ride
+// along with it, which is also what keeps it readable where the green and
+// red sit below 3:1 on their surface.
 function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
   return (
     <div
-      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium ${
-        ok ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+      className={`inline-flex items-center gap-1.5 text-base font-bold ${
+        ok
+          ? "text-horizonGreen-500"
+          : "text-horizonRed-500 dark:text-horizonRed-400"
       }`}
     >
       {ok ? (
-        <CheckCircle2 className="h-4 w-4" />
+        <CheckCircle2 className="h-4 w-4 shrink-0" />
       ) : (
-        <XCircle className="h-4 w-4" />
+        <XCircle className="h-4 w-4 shrink-0" />
       )}
       {label}
     </div>
@@ -200,6 +213,11 @@ export function DashboardPage() {
     archived_count: number;
     user_count: number;
     ads_by_source: Record<string, number>;
+  } | null>(null);
+  const [traffic, setTraffic] = useState<{
+    days: TrafficDay[];
+    period_views: number;
+    period_visitors: number;
   } | null>(null);
   const [scrapeProgress, setScrapeProgress] = useState<ScrapeProgress | null>(
     null,
@@ -278,16 +296,23 @@ export function DashboardPage() {
       // allSettled (not all): one endpoint failing shouldn't wrongly blank
       // out the others' already-healthy state (e.g. a transient KPI query
       // error used to make the API/DB status cards falsely show "Offline").
-      const [healthResult, dbResult, propsResult, scrapeResult, kpisResult] =
-        await Promise.allSettled([
-          api.health(),
-          api.healthDb(),
-          api.getAllProperties(),
-          api.getScrapeStatus(),
-          api.getKpis(),
-        ]);
+      const [
+        healthResult,
+        dbResult,
+        propsResult,
+        scrapeResult,
+        kpisResult,
+        trafficResult,
+      ] = await Promise.allSettled([
+        api.health(),
+        api.healthDb(),
+        api.getAllProperties(),
+        api.getScrapeStatus(),
+        api.getKpis(),
+        api.getTraffic(14),
+      ]);
 
-      const results = [healthResult, dbResult, propsResult, scrapeResult, kpisResult];
+      const results = [healthResult, dbResult, propsResult, scrapeResult, kpisResult, trafficResult];
       const unauthorized = results.some(
         (r) => r.status === "rejected" && r.reason instanceof Error && r.reason.message === "UNAUTHORIZED"
       );
@@ -305,6 +330,9 @@ export function DashboardPage() {
       }
       if (kpisResult.status === "fulfilled") {
         setKpis(kpisResult.value);
+      }
+      if (trafficResult.status === "fulfilled") {
+        setTraffic(trafficResult.value);
       }
       if (scrapeResult.status === "fulfilled") {
         const scrapeStatus = scrapeResult.value;
@@ -518,7 +546,7 @@ export function DashboardPage() {
     // Kept but hidden (not a visible column) so the default "newest first"
     // sort still works without exposing the raw id to the admin.
     { data: "id", title: "ID", visible: false },
-    { data: "title", title: t("dashboard.colName"), className: "font-medium text-slate-900" },
+    { data: "title", title: t("dashboard.colName"), className: "font-medium text-navy-700 dark:text-white" },
     { data: "location", title: t("dashboard.colLocation") },
     { data: "categoryLabel", title: t("dashboard.colCategory") },
     { data: "transactionLabel", title: t("dashboard.colTransaction") },
@@ -647,173 +675,111 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-      <section className="mb-10 animate-fade-in">
-        <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
+      <section className="mb-8 animate-fade-in">
+        <div className="mb-2 flex items-center gap-2 text-sm font-medium text-brand-500 dark:text-brand-400">
           <Activity className="h-4 w-4" />
           {t("dashboard.administration")}
         </div>
-        <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900">
-          {t("dashboard.title")}
-        </h1>
+        <h1 className="heading-page">{t("dashboard.title")}</h1>
       </section>
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <div className="stat-card animate-slide-up">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600/20">
-            <Server className="h-5 w-5 text-brand-400" />
-          </div>
-          <p className="text-xs text-slate-400">API</p>
-          {loading ? (
-            <Loader2 className="mt-2 h-5 w-5 animate-spin text-slate-400" />
-          ) : (
-            <StatusBadge
-              ok={apiOk}
-              label={apiOk ? t("dashboard.online") : t("dashboard.offline")}
-            />
-          )}
-        </div>
-
-        <div
-          className="stat-card animate-slide-up"
-          style={{ animationDelay: "50ms" }}
-        >
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/20">
-            <Database className="h-5 w-5 text-violet-600" />
-          </div>
-          <p className="text-xs text-slate-400">{t("dashboard.database")}</p>
-          {loading ? (
-            <Loader2 className="mt-2 h-5 w-5 animate-spin text-slate-400" />
-          ) : (
-            <StatusBadge
-              ok={dbOk}
-              label={dbOk ? t("dashboard.connected") : t("dashboard.unavailable")}
-            />
-          )}
-        </div>
-
-        <div
-          className="stat-card animate-slide-up"
-          style={{ animationDelay: "100ms" }}
-        >
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-amber-600/20">
-            <Download className="h-5 w-5 text-amber-600" />
-          </div>
-          <p className="text-xs text-slate-400">{t("dashboard.totalAds")}</p>
-          <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
-            {loading ? "—" : totalProperties}
-          </p>
-        </div>
+      {/* KPI row — single numbers belong in stat tiles, not charts. */}
+      <div className="mb-5 grid animate-slide-up gap-5 sm:grid-cols-2 lg:grid-cols-3 3xl:grid-cols-6">
+        <StatWidget
+          icon={<Server className="h-6 w-6" />}
+          label="API"
+          value={
+            loading ? (
+              <Loader2 className="h-5 w-5 animate-spin text-gray-600" />
+            ) : (
+              <StatusBadge
+                ok={apiOk}
+                label={apiOk ? t("dashboard.online") : t("dashboard.offline")}
+              />
+            )
+          }
+        />
+        <StatWidget
+          icon={<Database className="h-6 w-6" />}
+          label={t("dashboard.database")}
+          value={
+            loading ? (
+              <Loader2 className="h-5 w-5 animate-spin text-gray-600" />
+            ) : (
+              <StatusBadge
+                ok={dbOk}
+                label={dbOk ? t("dashboard.connected") : t("dashboard.unavailable")}
+              />
+            )
+          }
+        />
+        <StatWidget
+          icon={<Download className="h-6 w-6" />}
+          label={t("dashboard.totalAds")}
+          value={loading ? "—" : totalProperties.toLocaleString("fr-FR")}
+        />
+        <StatWidget
+          icon={<Archive className="h-6 w-6" />}
+          label={t("dashboard.archivedAds")}
+          value={loading ? "—" : (kpis?.archived_count ?? 0).toLocaleString("fr-FR")}
+        />
+        <StatWidget
+          icon={<Users className="h-6 w-6" />}
+          label={t("dashboard.users")}
+          value={loading ? "—" : (kpis?.user_count ?? 0).toLocaleString("fr-FR")}
+        />
+        <StatWidget
+          icon={<Globe className="h-6 w-6" />}
+          label={t("dashboard.activeSources")}
+          value={loading ? "—" : Object.keys(kpis?.ads_by_source ?? {}).length}
+        />
       </div>
 
-      <div className="mb-8 grid gap-4 sm:grid-cols-3">
-        <div
-          className="stat-card animate-slide-up"
-          style={{ animationDelay: "150ms" }}
-        >
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-600/20">
-            <Archive className="h-5 w-5 text-emerald-600" />
-          </div>
-          <p className="text-xs text-slate-400">{t("dashboard.archivedAds")}</p>
-          <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
-            {loading ? "—" : (kpis?.archived_count ?? 0)}
-          </p>
-        </div>
-
-        <div
-          className="stat-card animate-slide-up"
-          style={{ animationDelay: "200ms" }}
-        >
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/20">
-            <Users className="h-5 w-5 text-blue-600" />
-          </div>
-          <p className="text-xs text-slate-400">{t("dashboard.users")}</p>
-          <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
-            {loading ? "—" : (kpis?.user_count ?? 0)}
-          </p>
-        </div>
-
-        <div
-          className="stat-card animate-slide-up"
-          style={{ animationDelay: "250ms" }}
-        >
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-600/20">
-            <Globe className="h-5 w-5 text-cyan-600" />
-          </div>
-          <p className="text-xs text-slate-400">{t("dashboard.activeSources")}</p>
-          <p className="mt-2 font-display text-3xl font-semibold text-slate-900">
-            {loading ? "—" : Object.keys(kpis?.ads_by_source ?? {}).length}
-          </p>
-        </div>
+      {/* Traffic gets the full width — 14 daily columns need the room. */}
+      <div className="mb-5 animate-slide-up">
+        <DailyTrafficCard
+          title={t("dashboard.dailyTraffic")}
+          days={traffic?.days ?? []}
+          periodViews={traffic?.period_views ?? 0}
+          periodVisitors={traffic?.period_visitors ?? 0}
+          viewsLabel={t("dashboard.views")}
+          visitorsLabel={t("dashboard.visitors")}
+          emptyLabel={t("dashboard.trafficEmpty")}
+          lang={lang}
+        />
       </div>
 
-      {kpis && !loading && (
-        <div className="mb-8 grid gap-4 sm:grid-cols-2">
-          <div
-            className="glass animate-slide-up rounded-2xl p-6 shadow-card"
-            style={{ animationDelay: "350ms" }}
-          >
-            <h3 className="mb-4 font-display text-lg font-semibold text-slate-900">
-              {t("dashboard.propsByType")}
-            </h3>
-            <div className="space-y-3">
-              {Object.entries(kpis.properties_by_type).map(([type, count]) => (
-                <div key={type} className="flex items-center justify-between">
-                  <span className="text-sm text-slate-700">{propertyTypeLabel(type)}</span>
-                  <span className="font-display text-lg font-semibold text-slate-900">
-                    {count}
-                  </span>
-                </div>
-              ))}
-              {Object.keys(kpis.properties_by_type).length === 0 && (
-                <p className="text-sm text-slate-400">
-                  {t("dashboard.noData")}
-                </p>
-              )}
-            </div>
-          </div>
+      {/* The two part-to-whole splits, paired so they read as one comparison. */}
+      <div className="mb-5 grid animate-slide-up gap-5 lg:grid-cols-2">
+        <DonutChartCard
+          title={t("dashboard.propsByType")}
+          slices={Object.entries(kpis?.properties_by_type ?? {}).map(
+            ([type, count]) => ({ label: propertyTypeLabel(type), value: count }),
+          )}
+          totalLabel={t("dashboard.totalLabel")}
+          otherLabel={t("dashboard.otherLabel")}
+          emptyLabel={t("dashboard.noData")}
+        />
+        <DonutChartCard
+          title={t("dashboard.adsBySource")}
+          slices={Object.entries(kpis?.ads_by_source ?? {}).map(
+            ([source, count]) => ({ label: sourceLabel(source), value: count }),
+          )}
+          totalLabel={t("dashboard.totalLabel")}
+          otherLabel={t("dashboard.otherLabel")}
+          emptyLabel={t("dashboard.noData")}
+        />
+      </div>
 
-          <div
-            className="glass animate-slide-up rounded-2xl p-6 shadow-card"
-            style={{ animationDelay: "400ms" }}
-          >
-            <h3 className="mb-4 font-display text-lg font-semibold text-slate-900">
-              {t("dashboard.adsBySource")}
-            </h3>
-            <div className="space-y-3">
-              {Object.entries(kpis.ads_by_source).map(([source, count]) => (
-                <div key={source} className="flex items-center justify-between">
-                  <span className="text-sm text-slate-700">
-                    {sourceLabel(source)}
-                  </span>
-                  <span className="font-display text-lg font-semibold text-slate-900">
-                    {count}
-                  </span>
-                </div>
-              ))}
-              {Object.keys(kpis.ads_by_source).length === 0 && (
-                <p className="text-sm text-slate-400">
-                  {t("dashboard.noData")}
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div
-        className="glass animate-slide-up mb-8 rounded-2xl p-6 shadow-card"
-        style={{ animationDelay: "425ms" }}
-      >
+      <Card className="mb-5 animate-slide-up p-6">
         <div className="mb-6 flex items-center gap-2">
-          <Archive className="h-5 w-5 text-violet-600" />
-          <h2 className="font-display text-xl font-semibold text-slate-900">
-            {t("dashboard.adsManagement")}
-          </h2>
+          <Archive className="h-5 w-5 text-brand-500 dark:text-brand-400" />
+          <h2 className="heading-card text-xl">{t("dashboard.adsManagement")}</h2>
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-700 dark:text-gray-600" />
             <input
               type="text"
               placeholder={t("dashboard.searchPlaceholder")}
@@ -823,15 +789,15 @@ export function DashboardPage() {
             />
           </div>
 
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1">
+          <div className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 p-1">
             <button
               type="button"
               onClick={() => setArchivedOnly(false)}
               aria-pressed={!showArchivedOnly}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                 !showArchivedOnly
-                  ? "bg-brand-600 text-white"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-brand-500 text-white"
+                  : "text-gray-700 dark:text-gray-600 hover:text-navy-700 dark:hover:text-white"
               }`}
             >
               <Globe className="h-3.5 w-3.5" />
@@ -843,8 +809,8 @@ export function DashboardPage() {
               aria-pressed={showArchivedOnly}
               className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium transition ${
                 showArchivedOnly
-                  ? "bg-violet-600 text-white"
-                  : "text-slate-500 hover:text-slate-900"
+                  ? "bg-brand-500 text-white"
+                  : "text-gray-700 dark:text-gray-600 hover:text-navy-700 dark:hover:text-white"
               }`}
             >
               <ArchiveRestore className="h-3.5 w-3.5" />
@@ -855,7 +821,7 @@ export function DashboardPage() {
 
         <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.governorate")}</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">{t("dashboard.governorate")}</label>
             <select
               className="input-field w-full"
               value={archiveFilters.city ?? ""}
@@ -873,7 +839,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.category")}</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">{t("dashboard.category")}</label>
             <select
               className="input-field w-full"
               value={archiveFilters.subcategory ?? ""}
@@ -900,7 +866,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.transaction")}</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">{t("dashboard.transaction")}</label>
             <select
               className="input-field w-full"
               value={archiveFilters.listingType ?? ""}
@@ -915,7 +881,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.priceMin")}</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">{t("dashboard.priceMin")}</label>
             <input
               type="number"
               className="input-field w-full"
@@ -932,7 +898,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">{t("dashboard.priceMax")}</label>
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">{t("dashboard.priceMax")}</label>
             <input
               type="number"
               className="input-field w-full"
@@ -949,7 +915,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">
               {t("dashboard.areaMin")}
             </label>
             <input
@@ -968,7 +934,7 @@ export function DashboardPage() {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">
+            <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">
               {t("dashboard.areaMax")}
             </label>
             <input
@@ -988,7 +954,7 @@ export function DashboardPage() {
 
           {archiveFilters.subcategory && archiveFilters.subcategory !== "land" && (
             <div>
-              <label className="mb-1.5 block text-xs font-medium text-slate-500">
+              <label className="mb-1.5 block text-xs font-medium text-gray-700 dark:text-gray-600">
                 {t("dashboard.bedroomsMin")}
               </label>
               <input
@@ -1012,14 +978,14 @@ export function DashboardPage() {
           <button
             type="button"
             onClick={resetArchiveFilters}
-            className="mb-4 flex items-center gap-1 text-xs text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 px-2.5 py-1.5 rounded-lg"
+            className="mb-4 flex items-center gap-1 text-xs text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-gray-700 dark:hover:text-gray-600 px-2.5 py-1.5 rounded-lg"
           >
             <X className="h-3.5 w-3.5" />
             {t("dashboard.resetFilters")}
           </button>
         )}
 
-        <div className="dt-archive overflow-x-auto rounded-xl border border-slate-100">
+        <div className="dt-archive overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
           <DataTable
             key={lang}
             ref={archiveTableRef}
@@ -1039,33 +1005,32 @@ export function DashboardPage() {
             }}
           />
         </div>
-      </div>
+      </Card>
 
-      <div
-        className="glass animate-slide-up rounded-2xl p-6 shadow-card"
-        style={{ animationDelay: "450ms" }}
-      >
-        <h2 className="mb-6 font-display text-xl font-semibold text-slate-900">
+      <Card className="animate-slide-up p-6">
+        <h2 className="heading-card mb-6 text-xl">
           {t("dashboard.runScrapeTitle")}
         </h2>
 
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-b border-slate-100 py-4">
+        <div className="mb-6 flex flex-col gap-4 border-b border-t border-gray-200 py-4 dark:border-white/10 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600/10">
-              <Clock className="h-4 w-4 text-brand-400" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-lightPrimary dark:bg-navy-700">
+              <Clock className="h-4 w-4 text-brand-500 dark:text-brand-400" />
             </div>
             <div>
-              <p className="text-sm font-medium text-slate-700">
+              <p className="text-sm font-medium text-navy-700 dark:text-white">
                 {t("dashboard.autoScrape")}
               </p>
-              <p className="text-xs text-slate-400">{t("dashboard.everyMonday")}</p>
+              <p className="text-xs text-gray-700 dark:text-gray-600">
+                {t("dashboard.everyMonday")}
+              </p>
             </div>
           </div>
           <div className="flex flex-col sm:items-end">
-            <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-700 dark:text-gray-600">
               {t("dashboard.nextAutoScrape")}
             </span>
-            <p className="font-mono text-xl font-bold text-brand-400">
+            <p className="font-mono text-xl font-bold text-brand-500 dark:text-brand-400">
               {nextScrapeTime ? formatCountdown(timeLeft) : t("dashboard.calculating")}
             </p>
           </div>
@@ -1101,7 +1066,7 @@ export function DashboardPage() {
               type="button"
               onClick={cancelScrape}
               disabled={cancelling}
-              className="inline-flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-600 transition hover:bg-red-500/20 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-xl bg-horizonRed-500/10 px-4 py-2.5 text-sm font-medium text-horizonRed-500 dark:text-horizonRed-400 transition hover:bg-horizonRed-500/20 disabled:opacity-50"
             >
               {cancelling ? (
                 <>
@@ -1119,22 +1084,22 @@ export function DashboardPage() {
         </div>
 
         {scrapeError && (
-          <p className="mt-4 text-sm text-red-600">{scrapeError}</p>
+          <p className="mt-4 text-sm text-horizonRed-500 dark:text-horizonRed-400">{scrapeError}</p>
         )}
 
         {scrapeCancelled && !scraping && (
-          <div className="mt-4 flex items-center gap-2 rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-600">
+          <div className="mt-4 flex items-center gap-2 rounded-xl bg-horizonOrange-500/10 px-4 py-3 text-sm text-horizonOrange-600 dark:text-horizonOrange-500">
             <Ban className="h-4 w-4 shrink-0" />
             {t("dashboard.scrapeCancelledMsg")}
           </div>
         )}
 
         {scraping && scrapeProgress && (
-          <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4">
-            <h4 className="mb-3 text-sm font-semibold text-slate-900">
+          <div className="mt-6 rounded-xl border border-gray-200 dark:border-white/10 bg-lightPrimary dark:bg-navy-900 p-4">
+            <h4 className="mb-3 text-sm font-semibold text-navy-700 dark:text-white">
               {t("dashboard.scrapeProgress")}
             </h4>
-            <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
+            <div className="mb-2 flex items-center justify-between text-xs text-gray-700 dark:text-gray-600">
               <span>{t("dashboard.sourcesCompleted")}</span>
               <span>
                 {scrapeProgress.completed_sources}/
@@ -1146,30 +1111,30 @@ export function DashboardPage() {
                 ([source, progress]) => (
                   <div
                     key={source}
-                    className="rounded-lg bg-slate-100 px-3 py-2"
+                    className="rounded-lg bg-lightPrimary dark:bg-navy-700 px-3 py-2"
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <div
                           className={`h-2 w-2 rounded-full ${
                             progress.status === "completed"
-                              ? "bg-emerald-500"
+                              ? "bg-horizonGreen-500"
                               : progress.status === "running"
                                 ? "bg-brand-400 animate-pulse"
                                 : progress.status === "error"
-                                  ? "bg-red-500"
+                                  ? "bg-horizonRed-500"
                                   : progress.status === "cancelled"
-                                    ? "bg-amber-500"
-                                    : "bg-slate-300"
+                                    ? "bg-horizonOrange-500"
+                                    : "bg-gray-300 dark:bg-navy-600"
                           }`}
                         />
-                        <span className="text-xs font-medium text-slate-700">
+                        <span className="text-xs font-medium text-navy-700 dark:text-gray-300">
                           {sourceLabel(source)}
                         </span>
                       </div>
-                      <div className="flex items-center gap-3 text-xs text-slate-500">
+                      <div className="flex items-center gap-3 text-xs text-gray-700 dark:text-gray-600">
                         {progress.status === "running" && progress.phase && (
-                          <span className="text-brand-400">
+                          <span className="text-brand-500 dark:text-brand-400">
                             {t("dashboard.phase")} {phaseLabel(progress.phase)}
                             {progress.step
                               ? ` — ${stepLabel(progress.step)}`
@@ -1183,16 +1148,16 @@ export function DashboardPage() {
                           </span>
                         )}
                         {progress.status === "completed" && (
-                          <span className="text-emerald-600">{t("dashboard.done")}</span>
+                          <span className="text-horizonGreen-500">{t("dashboard.done")}</span>
                         )}
                         {progress.status === "error" && (
-                          <span className="text-red-600">{t("dashboard.error")}</span>
+                          <span className="text-horizonRed-500 dark:text-horizonRed-400">{t("dashboard.error")}</span>
                         )}
                         {progress.status === "cancelled" && (
-                          <span className="text-amber-600">{t("dashboard.cancelled")}</span>
+                          <span className="text-horizonOrange-600 dark:text-horizonOrange-500">{t("dashboard.cancelled")}</span>
                         )}
                         {progress.status === "pending" && (
-                          <span className="text-slate-400">{t("dashboard.pending")}</span>
+                          <span className="text-gray-700 dark:text-gray-600">{t("dashboard.pending")}</span>
                         )}
                       </div>
                     </div>
@@ -1205,10 +1170,10 @@ export function DashboardPage() {
                             key={phase}
                             className={`rounded-md px-2 py-1 text-[11px] ${
                               phaseStatus === "completed"
-                                ? "bg-emerald-500/10 text-emerald-600"
+                                ? "bg-horizonGreen-500/10 text-horizonGreen-500"
                                 : phaseStatus === "running"
-                                  ? "bg-brand-500/10 text-brand-400"
-                                  : "bg-slate-50 text-slate-400"
+                                  ? "bg-brand-500/10 text-brand-500 dark:text-brand-400"
+                                  : "bg-lightPrimary dark:bg-navy-900 text-gray-700 dark:text-gray-600"
                             }`}
                           >
                             <span className="font-medium">
@@ -1234,15 +1199,15 @@ export function DashboardPage() {
         )}
 
         {scrapeResults && (
-          <div className="mt-6 overflow-x-auto rounded-xl border border-slate-100">
+          <div className="mt-6 overflow-x-auto rounded-xl border border-gray-200 dark:border-white/10">
             {scrapeDuration > 0 && (
-              <div className="bg-slate-50 px-4 py-3 text-sm text-slate-700 font-medium border-b border-slate-100">
+              <div className="bg-lightPrimary dark:bg-navy-900 px-4 py-3 text-sm text-navy-700 dark:text-gray-300 font-medium border-b border-gray-200 dark:border-white/10">
                 {t("dashboard.completedIn").replace("{n}", String(scrapeDuration))}
               </div>
             )}
             <table className="w-full text-left text-sm">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50 text-xs text-slate-400">
+                <tr className="border-b border-gray-200 dark:border-white/10 bg-lightPrimary dark:bg-navy-900 text-xs text-gray-700 dark:text-gray-600">
                   <th className="px-4 py-3 font-medium">{t("dashboard.colSource")}</th>
                   <th className="px-4 py-3 font-medium">{t("dashboard.phase")}</th>
                   <th className="px-4 py-3 font-medium">{t("dashboard.found")}</th>
@@ -1259,12 +1224,12 @@ export function DashboardPage() {
                     return (
                       <tr
                         key={result.source}
-                        className="border-b border-slate-100 last:border-0"
+                        className="border-b border-gray-200 dark:border-white/10 last:border-0"
                       >
-                        <td className="px-4 py-3 font-medium text-slate-900">
+                        <td className="px-4 py-3 font-medium text-navy-700 dark:text-white">
                           {sourceLabel(sourceKey)}
                         </td>
-                        <td colSpan={6} className="px-4 py-3 text-red-600">
+                        <td colSpan={6} className="px-4 py-3 text-horizonRed-500 dark:text-horizonRed-400">
                           {result.error}
                         </td>
                       </tr>
@@ -1275,23 +1240,23 @@ export function DashboardPage() {
                     return (
                       <tr
                         key={result.source}
-                        className="border-t-2 border-slate-200 bg-slate-50 font-semibold last:border-b-0"
+                        className="border-t-2 border-gray-200 dark:border-white/10 bg-lightPrimary dark:bg-navy-900 font-semibold last:border-b-0"
                       >
-                        <td className="px-4 py-3 text-slate-900">{t("dashboard.total")}</td>
+                        <td className="px-4 py-3 text-navy-700 dark:text-white">{t("dashboard.total")}</td>
                         <td className="px-4 py-3" />
-                        <td className="px-4 py-3 text-slate-800">
+                        <td className="px-4 py-3 text-navy-700 dark:text-white">
                           {result.count ?? 0}
                         </td>
-                        <td className="px-4 py-3 text-emerald-600">
+                        <td className="px-4 py-3 text-horizonGreen-500">
                           {result.inserted ?? 0}
                         </td>
-                        <td className="px-4 py-3 text-slate-700">
+                        <td className="px-4 py-3 text-navy-700 dark:text-gray-300">
                           {result.skipped ?? 0}
                         </td>
-                        <td className="px-4 py-3 text-amber-600">
+                        <td className="px-4 py-3 text-horizonOrange-600 dark:text-horizonOrange-500">
                           {result.errors ?? 0}
                         </td>
-                        <td className="px-4 py-3 text-violet-600">
+                        <td className="px-4 py-3 text-brand-500 dark:text-brand-400">
                           {result.archived ?? 0}
                         </td>
                       </tr>
@@ -1304,22 +1269,22 @@ export function DashboardPage() {
                           return (
                             <tr
                               key={`${result.source}-${phase}`}
-                              className="border-b border-slate-100 bg-slate-50 text-xs"
+                              className="border-b border-gray-200 dark:border-white/10 bg-lightPrimary dark:bg-navy-900 text-xs"
                             >
                               <td className="px-4 py-2" />
-                              <td className="px-4 py-2 text-slate-500">
+                              <td className="px-4 py-2 text-gray-700 dark:text-gray-600">
                                 {phaseLabel(phase)}
                               </td>
-                              <td className="px-4 py-2 text-slate-500">
+                              <td className="px-4 py-2 text-gray-700 dark:text-gray-600">
                                 {stats.count}
                               </td>
-                              <td className="px-4 py-2 text-emerald-600/80">
+                              <td className="px-4 py-2 text-horizonGreen-500/80">
                                 {stats.inserted}
                               </td>
-                              <td className="px-4 py-2 text-slate-400">
+                              <td className="px-4 py-2 text-gray-700 dark:text-gray-600">
                                 {stats.skipped}
                               </td>
-                              <td className="px-4 py-2 text-amber-600/80">
+                              <td className="px-4 py-2 text-horizonOrange-600 dark:text-horizonOrange-500/80">
                                 {stats.errors}
                               </td>
                               <td className="px-4 py-2" />
@@ -1330,24 +1295,24 @@ export function DashboardPage() {
                     : [];
                   return (
                     <Fragment key={result.source}>
-                      <tr className="border-b border-slate-100">
-                        <td className="px-4 py-3 font-medium text-slate-900">
+                      <tr className="border-b border-gray-200 dark:border-white/10">
+                        <td className="px-4 py-3 font-medium text-navy-700 dark:text-white">
                           {sourceLabel(sourceKey)}
                         </td>
-                        <td className="px-4 py-3 text-slate-400">{t("dashboard.total")}</td>
-                        <td className="px-4 py-3 text-slate-700">
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-600">{t("dashboard.total")}</td>
+                        <td className="px-4 py-3 text-navy-700 dark:text-gray-300">
                           {result.count}
                         </td>
-                        <td className="px-4 py-3 text-emerald-600">
+                        <td className="px-4 py-3 text-horizonGreen-500">
                           {result.inserted}
                         </td>
-                        <td className="px-4 py-3 text-slate-500">
+                        <td className="px-4 py-3 text-gray-700 dark:text-gray-600">
                           {result.skipped}
                         </td>
-                        <td className="px-4 py-3 text-amber-600">
+                        <td className="px-4 py-3 text-horizonOrange-600 dark:text-horizonOrange-500">
                           {result.errors}
                         </td>
-                        <td className="px-4 py-3 text-violet-600">
+                        <td className="px-4 py-3 text-brand-500 dark:text-brand-400">
                           {result.archived || 0}
                         </td>
                       </tr>
@@ -1357,12 +1322,12 @@ export function DashboardPage() {
                 })}
               </tbody>
             </table>
-            <p className="border-t border-slate-100 px-4 py-3 text-xs text-slate-400">
+            <p className="border-t border-gray-200 dark:border-white/10 px-4 py-3 text-xs text-gray-700 dark:text-gray-600">
               {t("dashboard.alreadyInDbNote")}
             </p>
           </div>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

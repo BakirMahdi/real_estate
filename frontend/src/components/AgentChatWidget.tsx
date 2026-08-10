@@ -30,7 +30,7 @@ function MessageContent({ text, onNavigate }: { text: string; onNavigate: () => 
                 <Link
                   to={href}
                   onClick={onNavigate}
-                  className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
+                  className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700 dark:text-brand-200 dark:hover:text-brand-100"
                 >
                   {children}
                 </Link>
@@ -41,7 +41,7 @@ function MessageContent({ text, onNavigate }: { text: string; onNavigate: () => 
                 href={href}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700"
+                className="font-medium text-brand-600 underline underline-offset-2 hover:text-brand-700 dark:text-brand-200 dark:hover:text-brand-100"
               >
                 {children}
               </a>
@@ -128,19 +128,19 @@ export function AgentChatWidget() {
   return (
     <div className="fixed bottom-5 right-5 z-50 flex flex-col items-end gap-3">
       {open && (
-        <div className="glass flex h-[28rem] w-80 flex-col overflow-hidden rounded-2xl shadow-card sm:w-96">
-          <div className="flex items-center justify-between border-b border-slate-100 bg-white/80 px-4 py-3">
+        <div className="glass flex h-[28rem] w-80 flex-col overflow-hidden sm:w-96">
+          <div className="flex items-center justify-between border-b border-gray-200 dark:border-white/10 bg-white/80 dark:bg-navy-800/80 px-4 py-3">
             <div>
-              <p className="font-display text-sm font-semibold text-slate-900">{t("chat.title")}</p>
+              <p className="font-display text-sm font-semibold text-navy-700 dark:text-white">{t("chat.title")}</p>
               {propertyId && (
-                <p className="text-xs text-slate-400">{t("chat.aboutListing")}</p>
+                <p className="text-xs text-gray-700 dark:text-gray-600">{t("chat.aboutListing")}</p>
               )}
             </div>
             <button
               type="button"
               onClick={() => setOpen(false)}
               aria-label={t("chat.close")}
-              className="rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+              className="rounded-lg p-1 text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white"
             >
               <X className="h-4 w-4" />
             </button>
@@ -149,7 +149,7 @@ export function AgentChatWidget() {
           {!authenticated ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
               <MessageCircle className="h-8 w-8 text-brand-500" />
-              <p className="text-sm text-slate-500">{t("chat.loginPrompt")}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-600">{t("chat.loginPrompt")}</p>
               <Link to="/login" onClick={() => setOpen(false)} className="btn-primary text-sm">
                 {t("chat.login")}
               </Link>
@@ -158,7 +158,7 @@ export function AgentChatWidget() {
             <>
           <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
             {messages.length === 0 && !sending && (
-              <p className="text-sm text-slate-400">{t("chat.emptyHint")}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-600">{t("chat.emptyHint")}</p>
             )}
             {messages.map((m, idx) => (
               <div
@@ -170,8 +170,8 @@ export function AgentChatWidget() {
                 <div
                   className={`rounded-xl px-3 py-2 text-sm ${
                     m.role === "user"
-                      ? "bg-brand-600 text-white"
-                      : "bg-slate-100 text-slate-900"
+                      ? "bg-brand-500 text-white"
+                      : "bg-lightPrimary dark:bg-navy-700 text-navy-700 dark:text-white"
                   }`}
                 >
                   {m.role === "model" ? (
@@ -181,19 +181,19 @@ export function AgentChatWidget() {
                   )}
                 </div>
                 {m.created_at && (
-                  <span className="px-1 text-[10px] text-slate-400">
+                  <span className="px-1 text-[10px] text-gray-700 dark:text-gray-600">
                     {formatMessageTime(m.created_at)}
                   </span>
                 )}
               </div>
             ))}
             {sending && (
-              <div className="max-w-[85%] rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-400">
+              <div className="max-w-[85%] rounded-xl bg-lightPrimary dark:bg-navy-700 px-3 py-2 text-sm text-gray-700 dark:text-gray-600">
                 ...
               </div>
             )}
             {sessionExpired && (
-              <p className="text-xs text-amber-600">
+              <p className="text-xs text-horizonOrange-600 dark:text-horizonOrange-500">
                 {t("chat.sessionExpired")}{" "}
                 <Link
                   to="/login"
@@ -205,10 +205,10 @@ export function AgentChatWidget() {
                 {t("chat.toContinue")}
               </p>
             )}
-            {error && <p className="text-xs text-red-600">{error}</p>}
+            {error && <p className="text-xs text-horizonRed-500 dark:text-horizonRed-400">{error}</p>}
           </div>
 
-          <div className="flex items-center gap-2 border-t border-slate-100 p-3">
+          <div className="flex items-center gap-2 border-t border-gray-200 dark:border-white/10 p-3">
             <input
               type="text"
               value={input}
@@ -225,7 +225,7 @@ export function AgentChatWidget() {
               onClick={send}
               disabled={sending || !input.trim() || sessionExpired}
               aria-label={t("chat.send")}
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white transition hover:bg-brand-700 disabled:opacity-50"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500 text-white transition hover:bg-brand-600 disabled:opacity-50"
             >
               <Send className="h-4 w-4" />
             </button>
@@ -239,7 +239,7 @@ export function AgentChatWidget() {
         type="button"
         onClick={() => setOpen((prev) => !prev)}
         aria-label={t("chat.open")}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-glow transition hover:bg-brand-700"
+        className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-glow transition hover:bg-brand-600"
       >
         <MessageCircle className="h-6 w-6" />
       </button>

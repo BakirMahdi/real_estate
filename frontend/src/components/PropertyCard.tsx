@@ -64,11 +64,11 @@ export function PropertyCard({ property, index = 0, onFavoriteChange }: Property
   };
 
   return (
-    <div className="group block animate-slide-up overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
+    <div className="group block animate-slide-up overflow-hidden rounded-[20px] border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 shadow-card transition hover:-translate-y-1 hover:border-brand-500/30 hover:shadow-glow"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       <Link to={`/property/${property.id}`} className="block">
-        <div className="relative h-44 w-full overflow-hidden bg-slate-100">
+        <div className="relative h-44 w-full overflow-hidden bg-lightPrimary dark:bg-navy-700">
           {mainImage ? (
             <img
               src={mainImage}
@@ -83,13 +83,13 @@ export function PropertyCard({ property, index = 0, onFavoriteChange }: Property
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/10" />
           <div className="absolute left-4 top-4 flex gap-2">
-            <span className="rounded-lg bg-white/85 px-2.5 py-1 text-xs font-medium text-slate-900 backdrop-blur">
+            <span className="rounded-lg bg-white/85 dark:bg-navy-800/85 px-2.5 py-1 text-xs font-medium text-navy-700 dark:text-white backdrop-blur">
               {sourceLabel(property.source)}
             </span>
-            <span className="rounded-lg bg-white/85 px-2.5 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+            <span className="rounded-lg bg-white/85 dark:bg-navy-800/85 px-2.5 py-1 text-xs font-medium text-navy-700 dark:text-gray-300 backdrop-blur">
               {subcategoryLabel(property.subcategory, property.property_type)}
             </span>
-            <span className="rounded-lg bg-white/85 px-2.5 py-1 text-xs font-medium text-amber-700 backdrop-blur">
+            <span className="rounded-lg bg-white/85 dark:bg-navy-800/85 px-2.5 py-1 text-xs font-medium text-horizonOrange-600 dark:text-horizonOrange-500 backdrop-blur">
               {listingTypeLabel(property.listing_type)}
             </span>
           </div>
@@ -101,9 +101,9 @@ export function PropertyCard({ property, index = 0, onFavoriteChange }: Property
             aria-pressed={isFavorite}
             aria-label={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
             title={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
-            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white/85 text-slate-700 backdrop-blur transition hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+            className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 dark:border-white/10 bg-white/85 dark:bg-navy-800/85 text-navy-700 dark:text-gray-300 backdrop-blur transition hover:bg-white dark:hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Heart className={`h-4 w-4 transition ${isFavorite ? "fill-red-500 text-red-500" : ""}`} />
+            <Heart className={`h-4 w-4 transition ${isFavorite ? "fill-horizonRed-500 text-horizonRed-500 dark:fill-horizonRed-400 dark:text-horizonRed-400" : ""}`} />
           </button>
 
           <div className="absolute bottom-4 left-4 right-4">
@@ -114,22 +114,22 @@ export function PropertyCard({ property, index = 0, onFavoriteChange }: Property
         </div>
 
         <div className="p-5">
-          <h3 className="mb-2 line-clamp-2 font-semibold leading-snug text-slate-900 group-hover:text-slate-900">
+          <h3 className="mb-2 line-clamp-2 font-semibold leading-snug text-navy-700 transition group-hover:text-brand-500 dark:text-white dark:group-hover:text-brand-200">
             {property.title}
           </h3>
 
-          <div className="mb-3 flex items-center gap-1.5 text-sm text-slate-500">
+          <div className="mb-3 flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-600">
             <MapPin className="h-3.5 w-3.5 shrink-0 text-brand-500" />
             <span className="truncate">{governorateOf(property)}</span>
           </div>
 
           {property.description && (
-            <p className="mb-4 line-clamp-2 text-sm text-slate-400">
+            <p className="mb-4 line-clamp-2 text-sm text-gray-700 dark:text-gray-600">
               {truncate(property.description, 100)}
             </p>
           )}
 
-          <div className="mb-4 flex flex-wrap gap-3 text-xs text-slate-500">
+          <div className="mb-4 flex flex-wrap gap-3 text-xs text-gray-700 dark:text-gray-600">
             <span className="flex items-center gap-1">
               <Maximize2 className="h-3.5 w-3.5" />
               {formatArea(property.area)}
@@ -142,11 +142,11 @@ export function PropertyCard({ property, index = 0, onFavoriteChange }: Property
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <span className="text-sm font-medium text-brand-400 transition group-hover:text-slate-900">
+          <div className="flex items-center justify-between gap-3 border-t border-gray-200 dark:border-white/10 pt-4">
+            <span className="text-sm font-medium text-brand-500 dark:text-brand-400 transition group-hover:text-navy-700 dark:group-hover:text-white">
               {t("card.viewDetails")}
             </span>
-            <ArrowUpRight className="h-4 w-4 text-slate-400 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-slate-900" />
+            <ArrowUpRight className="h-4 w-4 text-gray-700 dark:text-gray-600 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-navy-700 dark:group-hover:text-white" />
           </div>
         </div>
       </Link>

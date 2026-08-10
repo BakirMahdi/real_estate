@@ -21,7 +21,7 @@ export function WelcomePage() {
 
       <section className="mx-auto w-full max-w-5xl px-4 py-8 text-center sm:px-6">
         <div
-          className="mb-6 inline-flex animate-slide-up items-center gap-2 rounded-full border border-brand-200 bg-white/70 px-4 py-1.5 text-xs font-medium text-brand-600 opacity-0"
+          className="mb-6 inline-flex animate-slide-up items-center gap-2 rounded-full border border-gray-200 dark:border-white/10 bg-white/70 dark:bg-navy-800/70 px-4 py-1.5 text-xs font-medium text-brand-600 opacity-0 dark:text-brand-200"
           style={{ animationDelay: "0.05s" }}
         >
           <Building2 className="h-3.5 w-3.5" />
@@ -29,7 +29,7 @@ export function WelcomePage() {
         </div>
 
         <h1
-          className="animate-slide-up font-display text-4xl font-extrabold leading-tight tracking-tight text-slate-900 opacity-0 sm:text-6xl"
+          className="animate-slide-up font-display text-4xl font-extrabold leading-tight tracking-tight text-navy-700 dark:text-white opacity-0 sm:text-6xl"
           style={{ animationDelay: "0.15s" }}
         >
           {t("welcome.titlePrefix")}{" "}
@@ -39,7 +39,7 @@ export function WelcomePage() {
         </h1>
 
         <p
-          className="mx-auto mt-6 max-w-2xl animate-slide-up text-base leading-relaxed text-slate-500 opacity-0 sm:text-lg"
+          className="mx-auto mt-6 max-w-2xl animate-slide-up text-base leading-relaxed text-gray-700 dark:text-gray-600 opacity-0 sm:text-lg"
           style={{ animationDelay: "0.25s" }}
         >
           {t("welcome.subtitle")}
@@ -64,14 +64,14 @@ export function WelcomePage() {
           {features.map(({ icon: Icon, titleKey, textKey }, idx) => (
             <div
               key={titleKey}
-              className="glass animate-slide-up p-5 opacity-0 shadow-card transition hover:-translate-y-1 hover:border-brand-300"
+              className="glass animate-slide-up p-5 opacity-0 transition hover:-translate-y-1 hover:shadow-glow"
               style={{ animationDelay: `${0.45 + idx * 0.1}s` }}
             >
-              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600/15">
+              <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/15">
                 <Icon className="h-5 w-5 text-brand-500" />
               </div>
-              <h3 className="font-display text-sm font-semibold text-slate-900">{t(titleKey)}</h3>
-              <p className="mt-1.5 text-xs leading-relaxed text-slate-500">{t(textKey)}</p>
+              <h3 className="font-display text-sm font-semibold text-navy-700 dark:text-white">{t(titleKey)}</h3>
+              <p className="mt-1.5 text-xs leading-relaxed text-gray-700 dark:text-gray-600">{t(textKey)}</p>
             </div>
           ))}
         </div>

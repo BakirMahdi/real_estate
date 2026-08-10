@@ -7,10 +7,27 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Poppins:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
     <title>Rews — Immobilier Tunisie</title>
+    <script>
+      // Applies the saved theme before first paint. lib/theme.tsx does the
+      // same thing, but only after React mounts — which is one frame too
+      // late and shows a white flash to dark-mode users on every load.
+      // Deliberately duplicated (and kept in sync with STORAGE_KEY there).
+      (function () {
+        try {
+          var saved = localStorage.getItem("rews_theme");
+          var dark =
+            saved === "dark" ||
+            (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {
+          /* localStorage blocked — light mode is the safe default. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

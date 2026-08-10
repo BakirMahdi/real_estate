@@ -13,9 +13,8 @@ how deep into the scrape we are.
 
 The adapter also retries transient failures (dropped connections, 429/5xx
 throttling responses) with exponential backoff. Without this a single
-momentary hiccup makes a scraper silently return zero results for a whole
-site — which is exactly how an Expat run once collected 0 ads while every
-other site succeeded.
+momentary hiccup can make a scraper silently return zero results for a whole
+site.
 """
 
 import os

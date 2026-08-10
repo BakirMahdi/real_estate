@@ -203,7 +203,7 @@ def extract_features(card):
 def extract_house_features(card, title, description):
     # The structured ".adFeature" chips are strong positive signals, so feed
     # them into the shared extractor alongside the free text. Same negation-aware
-    # logic as tayara/expat, so amenities are labelled consistently across sources.
+    # logic as tayara, so amenities are labelled consistently across sources.
     feature_texts = [
         clean_text(feature.get_text(" ", strip=True))
         for feature in card.select(".adFeature")

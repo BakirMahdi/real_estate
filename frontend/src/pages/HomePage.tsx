@@ -147,14 +147,14 @@ export function HomePage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <section className="mb-10 animate-fade-in">
-        <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
+        <div className="mb-2 flex items-center gap-2 text-sm text-brand-500 dark:text-brand-400">
           <Home className="h-4 w-4" />
           {t("home.catalog")}
         </div>
-        <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+        <h1 className="font-display text-4xl font-semibold tracking-tight text-navy-700 dark:text-white sm:text-5xl">
           {t("home.title")}
         </h1>
-        <p className="mt-3 max-w-2xl text-slate-500">{t("home.subtitle")}</p>
+        <p className="mt-3 max-w-2xl text-gray-700 dark:text-gray-600">{t("home.subtitle")}</p>
       </section>
 
       <div className="mb-8">
@@ -167,8 +167,8 @@ export function HomePage() {
       </div>
 
       <div className="mb-6 flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          <span className="font-medium text-slate-900">{total}</span>{" "}
+        <p className="text-sm text-gray-700 dark:text-gray-600">
+          <span className="font-medium text-navy-700 dark:text-white">{total}</span>{" "}
           {total !== 1 ? t("home.found.many") : t("home.found.one")}
         </p>
       </div>
@@ -176,8 +176,8 @@ export function HomePage() {
       {loading ? (
         <LoadingSpinner label={t("home.loading")} />
       ) : error ? (
-        <div className="glass rounded-2xl p-8 text-center">
-          <p className="text-red-600">{error}</p>
+        <div className="glass p-8 text-center">
+          <p className="text-horizonRed-500 dark:text-horizonRed-400">{error}</p>
           <button
             type="button"
             onClick={() => loadProperties(filters)}
@@ -187,8 +187,8 @@ export function HomePage() {
           </button>
         </div>
       ) : properties.length === 0 ? (
-        <div className="glass rounded-2xl p-12 text-center">
-          <p className="text-slate-500">{t("home.noResults")}</p>
+        <div className="glass p-12 text-center">
+          <p className="text-gray-700 dark:text-gray-600">{t("home.noResults")}</p>
         </div>
       ) : (
         <>
@@ -204,17 +204,17 @@ export function HomePage() {
 
           {/* Pagination system */}
           {totalPages > 1 && (
-            <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-100 pt-6 sm:flex-row animate-fade-in">
-              <p className="text-sm text-slate-500">
+            <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-gray-200 dark:border-white/10 pt-6 sm:flex-row animate-fade-in">
+              <p className="text-sm text-gray-700 dark:text-gray-600">
                 {t("home.showing")}{" "}
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-navy-700 dark:text-white">
                   {Math.min((filters.offset ?? 0) + 1, total)}
                 </span>{" "}
                 {t("home.to")}{" "}
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-navy-700 dark:text-white">
                   {Math.min((filters.offset ?? 0) + properties.length, total)}
                 </span>{" "}
-                {t("home.of")} <span className="font-medium text-slate-900">{total}</span>{" "}
+                {t("home.of")} <span className="font-medium text-navy-700 dark:text-white">{total}</span>{" "}
                 {t("home.listings")}
               </p>
 
@@ -223,7 +223,7 @@ export function HomePage() {
                   type="button"
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1 || loading}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white disabled:pointer-events-none disabled:opacity-30"
                   aria-label={t("home.prevPage")}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -234,7 +234,7 @@ export function HomePage() {
                     return (
                       <span
                         key={`ell-${idx}`}
-                        className="flex h-9 w-9 items-center justify-center text-sm text-slate-400"
+                        className="flex h-9 w-9 items-center justify-center text-sm text-gray-700 dark:text-gray-600"
                       >
                         {p}
                       </span>
@@ -250,8 +250,8 @@ export function HomePage() {
                       disabled={loading}
                       className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition ${
                         isActive
-                          ? "bg-brand-600 text-white shadow-md"
-                          : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                          ? "bg-brand-500 text-white shadow-md"
+                          : "border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 text-gray-700 dark:text-gray-600 hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white"
                       }`}
                     >
                       {p}
@@ -263,7 +263,7 @@ export function HomePage() {
                   type="button"
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages || loading}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white disabled:pointer-events-none disabled:opacity-30"
                   aria-label={t("home.nextPage")}
                 >
                   <ChevronRight className="h-4 w-4" />

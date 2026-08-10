@@ -57,10 +57,10 @@ export function CreditSimulatorModal({
     result?.debtToIncomeRatio == null
       ? ""
       : result.debtToIncomeRatio <= 0.35
-        ? "text-emerald-600"
+        ? "text-horizonGreen-500"
         : result.debtToIncomeRatio <= 0.5
-          ? "text-amber-600"
-          : "text-red-600";
+          ? "text-horizonOrange-600 dark:text-horizonOrange-500"
+          : "text-horizonRed-500 dark:text-horizonRed-400";
 
   const capacity = canSimulate
     ? calculatePurchasingCapacity({
@@ -119,30 +119,30 @@ export function CreditSimulatorModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-navy-900/50 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="glass max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 shadow-card"
+        className="glass max-h-[90vh] w-full max-w-lg overflow-y-auto p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-6 flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-600/20">
-              <Calculator className="h-5 w-5 text-brand-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand-500/20">
+              <Calculator className="h-5 w-5 text-brand-500 dark:text-brand-400" />
             </div>
             <div>
-              <h2 className="font-display text-lg font-semibold text-slate-900">
+              <h2 className="font-display text-lg font-semibold text-navy-700 dark:text-white">
                 {t("sim.title")}
               </h2>
-              <p className="text-xs text-slate-400">{property.title}</p>
+              <p className="text-xs text-gray-700 dark:text-gray-600">{property.title}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label={t("sim.close")}
-            className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-900"
+            className="rounded-lg p-1.5 text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white"
           >
             <X className="h-5 w-5" />
           </button>
@@ -150,7 +150,7 @@ export function CreditSimulatorModal({
 
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
+            <span className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-600">
               {t("sim.price")}
             </span>
             <input
@@ -163,8 +163,8 @@ export function CreditSimulatorModal({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              {t("sim.down")} <span className="text-red-500">*</span>
+            <span className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-600">
+              {t("sim.down")} <span className="text-horizonRed-500 dark:text-horizonRed-400">*</span>
             </span>
             <input
               type="number"
@@ -180,8 +180,8 @@ export function CreditSimulatorModal({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              {t("sim.years")} <span className="text-red-500">*</span>
+            <span className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-600">
+              {t("sim.years")} <span className="text-horizonRed-500 dark:text-horizonRed-400">*</span>
             </span>
             <input
               type="number"
@@ -198,8 +198,8 @@ export function CreditSimulatorModal({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-medium text-slate-500">
-              {t("sim.income")} <span className="text-red-500">*</span>
+            <span className="mb-1 block text-xs font-medium text-gray-700 dark:text-gray-600">
+              {t("sim.income")} <span className="text-horizonRed-500 dark:text-horizonRed-400">*</span>
             </span>
             <input
               type="number"
@@ -222,25 +222,25 @@ export function CreditSimulatorModal({
         )}
 
         {result != null && (
-          <div className="mt-6 rounded-xl border border-slate-100 bg-white p-5">
-            <p className="text-xs text-slate-400">{t("sim.monthly")}</p>
-            <p className="font-display text-3xl font-extrabold text-brand-400">
+          <div className="mt-6 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 p-5">
+            <p className="text-xs text-gray-700 dark:text-gray-600">{t("sim.monthly")}</p>
+            <p className="font-display text-3xl font-extrabold text-brand-500 dark:text-brand-400">
               {formatTND(result.monthlyPayment)}
-              <span className="ml-1 text-base font-medium text-slate-400">{t("sim.perMonth")}</span>
+              <span className="ml-1 text-base font-medium text-gray-700 dark:text-gray-600">{t("sim.perMonth")}</span>
             </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <div>
-                <p className="text-xs text-slate-400">{t("sim.loanAmount")}</p>
-                <p className="font-medium text-slate-900">{formatTND(result.loanAmount)}</p>
+                <p className="text-xs text-gray-700 dark:text-gray-600">{t("sim.loanAmount")}</p>
+                <p className="font-medium text-navy-700 dark:text-white">{formatTND(result.loanAmount)}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-400">{t("sim.totalInterest")}</p>
-                <p className="font-medium text-slate-900">{formatTND(result.totalInterest)}</p>
+                <p className="text-xs text-gray-700 dark:text-gray-600">{t("sim.totalInterest")}</p>
+                <p className="font-medium text-navy-700 dark:text-white">{formatTND(result.totalInterest)}</p>
               </div>
               <div>
-                <p className="text-xs text-slate-400">{t("sim.totalPaid")}</p>
-                <p className="font-medium text-slate-900">{formatTND(result.totalPaid)}</p>
+                <p className="text-xs text-gray-700 dark:text-gray-600">{t("sim.totalPaid")}</p>
+                <p className="font-medium text-navy-700 dark:text-white">{formatTND(result.totalPaid)}</p>
               </div>
             </div>
 
@@ -258,26 +258,26 @@ export function CreditSimulatorModal({
         )}
 
         {capacity != null && (
-          <div className="mt-4 rounded-xl border border-slate-100 bg-white p-5">
-            <p className="text-xs text-slate-400">{t("sim.capacity")}</p>
-            <p className="font-display text-2xl font-bold text-slate-900">
+          <div className="mt-4 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 p-5">
+            <p className="text-xs text-gray-700 dark:text-gray-600">{t("sim.capacity")}</p>
+            <p className="font-display text-2xl font-bold text-navy-700 dark:text-white">
               {formatTND(capacity.maxAffordablePrice)}
             </p>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-gray-700 dark:text-gray-600">
               {t("sim.capacityNote1")} {formatTND(capacity.maxMonthlyPayment)}{" "}
               {t("sim.capacityNote2")}
             </p>
 
             {exceedsCapacity && (
-              <div className="mt-4 border-t border-slate-100 pt-4">
-                <p className="flex items-center gap-2 text-sm font-medium text-amber-600">
+              <div className="mt-4 border-t border-gray-200 dark:border-white/10 pt-4">
+                <p className="flex items-center gap-2 text-sm font-medium text-horizonOrange-600 dark:text-horizonOrange-500">
                   <TriangleAlert className="h-4 w-4 shrink-0" />
                   {t("sim.exceeds")}{" "}
                   {formatTND(propertyPrice - capacity.maxAffordablePrice)}.
                 </p>
 
                 {loadingAlternatives && (
-                  <p className="mt-3 flex items-center gap-2 text-sm text-slate-400">
+                  <p className="mt-3 flex items-center gap-2 text-sm text-gray-700 dark:text-gray-600">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     {t("sim.searching")}
                   </p>
@@ -285,22 +285,22 @@ export function CreditSimulatorModal({
 
                 {!loadingAlternatives && alternatives != null && alternatives.length > 0 && (
                   <div className="mt-3 space-y-2">
-                    <p className="text-xs font-medium text-slate-500">
+                    <p className="text-xs font-medium text-gray-700 dark:text-gray-600">
                       {t("sim.alternatives")}
                     </p>
                     {alternatives.map((alt) => (
                       <Link
                         key={alt.id}
                         to={`/property/${alt.id}`}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3 text-sm transition hover:border-brand-300 hover:bg-brand-50"
+                        className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-white/10 p-3 text-sm transition hover:border-brand-300 hover:bg-brand-50"
                       >
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-slate-900">{alt.title}</p>
-                          <p className="text-xs text-slate-400">
+                          <p className="truncate font-medium text-navy-700 dark:text-white">{alt.title}</p>
+                          <p className="text-xs text-gray-700 dark:text-gray-600">
                             {governorateOf(alt)} · {formatArea(alt.area)} · {sourceLabel(alt.source)}
                           </p>
                         </div>
-                        <p className="shrink-0 font-semibold text-brand-400">
+                        <p className="shrink-0 font-semibold text-brand-500 dark:text-brand-400">
                           {formatPrice(alt.price)}
                         </p>
                       </Link>
@@ -309,7 +309,7 @@ export function CreditSimulatorModal({
                 )}
 
                 {!loadingAlternatives && alternatives != null && alternatives.length === 0 && (
-                  <p className="mt-3 text-sm text-slate-400">
+                  <p className="mt-3 text-sm text-gray-700 dark:text-gray-600">
                     {t("sim.noAlternatives")}
                   </p>
                 )}
@@ -318,7 +318,7 @@ export function CreditSimulatorModal({
           </div>
         )}
 
-        <p className="mt-4 text-xs text-slate-400">{t("sim.disclaimer")}</p>
+        <p className="mt-4 text-xs text-gray-700 dark:text-gray-600">{t("sim.disclaimer")}</p>
       </div>
     </div>
   );

@@ -219,4 +219,17 @@ export const api = {
       user_count: number;
       ads_by_source: Record<string, number>;
     }>("/admin/kpis"),
+  /** Records one page view for the dashboard's Daily Traffic chart. */
+  trackView: (path: string, visitor?: string) =>
+    request<{ status: string }>("/track/view", {
+      method: "POST",
+      body: JSON.stringify({ path, visitor: visitor ?? null }),
+    }),
+  getTraffic: (days: number = 14) =>
+    request<{
+      days: { date: string; views: number; visitors: number }[];
+      total_views: number;
+      period_views: number;
+      period_visitors: number;
+    }>(`/admin/traffic?days=${days}`),
 };

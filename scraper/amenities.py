@@ -1,8 +1,8 @@
 """Shared, negation-aware amenity extraction (garage / furnished / terrace / pool).
 
-Single source of truth used by every scraper (tayara/mubawab/expat) and by the
+Single source of truth used by every scraper (tayara/mubawab) and by the
 extraction backfill, so a listing is labelled the same way no matter where it
-comes from - the three scrapers previously each carried their own slightly
+comes from - the two scrapers previously each carried their own slightly
 different keyword lists, which meant the same text could yield different
 amenities depending on the source.
 

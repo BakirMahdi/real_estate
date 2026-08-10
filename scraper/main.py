@@ -7,7 +7,6 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from .scrapers import tayara as tayara_scraper
 from .scrapers import mubawab as mubawab_scraper
-from .scrapers import expat as expat_scraper
 from .insert import bulk_insert_properties, bulk_get_latest_properties, is_same_property, get_active_ad_ids
 from .queries import get_properties, get_property_by_id, get_all_properties, search_properties_admin, archive_property, unarchive_property, add_favorite, remove_favorite, is_favorite, get_favorite_properties
 from .db import db_cursor
@@ -209,7 +208,6 @@ SCRAPE_PHASES = ("rent", "sale", "land")
 SCRAPER_SOURCES = (
     ("tayara", tayara_scraper.iter_scrape_phases),
     ("mubawab", mubawab_scraper.iter_scrape_phases),
-    ("expat", expat_scraper.iter_scrape_phases),
 )
 
 scrape_cancel_event = threading.Event()
@@ -1161,4 +1159,100 @@ def get_kpis(request: Request = None):
         "archived_count": archived_count,
         "user_count": user_count,
         "ads_by_source": ads_by_source
+    }
+
+
+class PageViewRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=200)
+    # Random per-tab id from sessionStorage — lets the dashboard separate
+    # views from sessions. Not an account id and not derived from one.
+    visitor: str | None = Field(default=None, max_length=64)
+
+
+@app.post("/track/view")
+@limiter.limit("120/minute")
+def track_view(body: PageViewRequest, request: Request):
+    """Record one page view for the dashboard's Daily Traffic chart.
+
+    Deliberately public and unauthenticated: most traffic is logged out, and
+    the chart would be meaningless if it only counted admins. Nothing that
+    identifies the visitor is stored (see db/migrate_page_views.sql) — so the
+    per-IP rate limit here is only about keeping the table from being flooded,
+    not about the row's contents.
+    """
+    # Store the route, never the query string: search terms and the ?next=
+    # redirect target would otherwise end up in a table we never read back.
+    path = body.path.split("?")[0][:200]
+    try:
+        with db_cursor(commit=True) as cur:
+            cur.execute(
+                "INSERT INTO page_views (path, visitor) VALUES (%s, %s)",
+                (path, body.visitor),
+            )
+    except Exception as e:
+        # Analytics must never break the page being viewed. A missing table
+        # (migration not applied yet) is the common case.
+        print(f"Warning: could not record page view ({e})")
+    return {"status": "ok"}
+
+
+@app.get("/admin/traffic")
+def get_traffic(days: int = Query(default=14, ge=1, le=90), request: Request = None):
+    """Daily page views over the last `days` days. Admin only.
+
+    Days with no traffic are returned as zeros rather than omitted, so the
+    chart's x-axis stays evenly spaced instead of silently compressing gaps.
+    """
+    role = get_current_user_role(request)
+    if role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    try:
+        with db_cursor() as cur:
+            cur.execute(
+                """
+                SELECT date_trunc('day', viewed_at)::date AS day,
+                       COUNT(*) AS views,
+                       COUNT(DISTINCT visitor) AS visitors
+                FROM page_views
+                WHERE viewed_at >= NOW() - (%s * INTERVAL '1 day')
+                GROUP BY day
+                """,
+                (days,),
+            )
+            by_day = {row[0]: (row[1], row[2]) for row in cur.fetchall()}
+
+            # Distinct over the whole window, not the sum of the per-day
+            # counts above — a visitor who came back on three days is one
+            # visitor, and summing the daily figures would count them thrice.
+            cur.execute(
+                """
+                SELECT COUNT(DISTINCT visitor)
+                FROM page_views
+                WHERE viewed_at >= NOW() - (%s * INTERVAL '1 day')
+                """,
+                (days,),
+            )
+            period_visitors = cur.fetchone()[0]
+
+            cur.execute("SELECT COUNT(*) FROM page_views")
+            total_views = cur.fetchone()[0]
+    except Exception as e:
+        # Same reasoning as track_view: an unapplied migration shouldn't take
+        # the whole dashboard down, so report an empty series instead.
+        print(f"Warning: could not read traffic ({e})")
+        return {"days": [], "total_views": 0, "period_views": 0, "period_visitors": 0}
+
+    today = datetime.now().date()
+    series = []
+    for offset in range(days - 1, -1, -1):
+        day = today - timedelta(days=offset)
+        views, visitors = by_day.get(day, (0, 0))
+        series.append({"date": day.isoformat(), "views": views, "visitors": visitors})
+
+    return {
+        "days": series,
+        "total_views": total_views,
+        "period_views": sum(d["views"] for d in series),
+        "period_visitors": period_visitors,
     }

@@ -206,7 +206,7 @@ def parse_rooms(description, title):
 
 
 def parse_house_features(title, description):
-    # Shared, negation-aware extractor so tayara/mubawab/expat all agree.
+    # Shared, negation-aware extractor so tayara and mubawab agree.
     return extract_amenities_present(f"{title} {description}")
 
 

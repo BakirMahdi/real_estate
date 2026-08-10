@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Heart,
   MapPin,
   Maximize2,
   Sofa,
@@ -18,7 +19,7 @@ import {
   Tag,
   Waves,
 } from "lucide-react";
-import { api } from "../api/client";
+import { api, isAuthenticated } from "../api/client";
 import { CreditSimulatorModal } from "../components/CreditSimulatorModal";
 import { LoadingSpinner } from "../components/LoadingSpinner";
 import type { Property, PropertyEstimate } from "../types/property";
@@ -43,13 +44,13 @@ function DetailItem({
   value: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-slate-100 bg-white p-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600/20">
-        <Icon className="h-4 w-4 text-brand-400" />
+    <div className="flex items-start gap-3 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 p-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/20">
+        <Icon className="h-4 w-4 text-brand-500 dark:text-brand-400" />
       </div>
       <div>
-        <p className="text-xs text-slate-400">{label}</p>
-        <p className="mt-0.5 font-medium text-slate-900">{value}</p>
+        <p className="text-xs text-gray-700 dark:text-gray-600">{label}</p>
+        <p className="mt-0.5 font-medium text-navy-700 dark:text-white">{value}</p>
       </div>
     </div>
   );
@@ -57,10 +58,10 @@ function DetailItem({
 
 function scoreAppearance(score: number): { labelKey: string; text: string; bar: string } {
   if (score >= 60)
-    return { labelKey: "est.good", text: "text-emerald-600", bar: "bg-emerald-500" };
+    return { labelKey: "est.good", text: "text-horizonGreen-500", bar: "bg-horizonGreen-500" };
   if (score >= 40)
-    return { labelKey: "est.fair", text: "text-amber-600", bar: "bg-amber-500" };
-  return { labelKey: "est.high", text: "text-red-600", bar: "bg-red-500" };
+    return { labelKey: "est.fair", text: "text-horizonOrange-600 dark:text-horizonOrange-500", bar: "bg-horizonOrange-500" };
+  return { labelKey: "est.high", text: "text-horizonRed-500 dark:text-horizonRed-400", bar: "bg-horizonRed-500" };
 }
 
 function EstimateCard({
@@ -80,27 +81,27 @@ function EstimateCard({
       : null;
 
   return (
-    <div className="mb-8 rounded-xl border border-slate-100 bg-white p-5">
+    <div className="mb-8 rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 p-5">
       <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-600/20">
-          <Sparkles className="h-4 w-4 text-brand-400" />
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-500/20">
+          <Sparkles className="h-4 w-4 text-brand-500 dark:text-brand-400" />
         </div>
-        <h2 className="font-display text-lg font-semibold text-slate-900">{t("est.title")}</h2>
+        <h2 className="font-display text-lg font-semibold text-navy-700 dark:text-white">{t("est.title")}</h2>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-gray-700 dark:text-gray-600">
             {isSale ? t("est.salePrice") : t("est.rentPrice")}
           </p>
-          <p className="font-display text-2xl font-bold text-brand-400">
+          <p className="font-display text-2xl font-bold text-brand-500 dark:text-brand-400">
             {formatPrice(estimate.estimated_price)}
             {!isSale && (
-              <span className="ml-1 text-sm font-medium text-slate-400">{t("est.perMonth")}</span>
+              <span className="ml-1 text-sm font-medium text-gray-700 dark:text-gray-600">{t("est.perMonth")}</span>
             )}
           </p>
           {gapPct != null && (
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="mt-1 text-xs text-gray-700 dark:text-gray-600">
               {t("est.asking")} {gapPct >= 0 ? "+" : ""}
               {gapPct.toFixed(0)}% {t("est.vsEstimate")}
             </p>
@@ -109,12 +110,12 @@ function EstimateCard({
 
         {score != null && appearance != null && (
           <div>
-            <p className="text-xs text-slate-400">{t("est.score")}</p>
+            <p className="text-xs text-gray-700 dark:text-gray-600">{t("est.score")}</p>
             <p className={`font-display text-2xl font-bold ${appearance.text}`}>
               {score}
-              <span className="text-sm font-medium text-slate-400"> / 100</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-600"> / 100</span>
             </p>
-            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-lightPrimary dark:bg-navy-700">
               <div
                 className={`h-full rounded-full ${appearance.bar}`}
                 style={{ width: `${score}%` }}
@@ -125,7 +126,7 @@ function EstimateCard({
         )}
       </div>
 
-      <p className="mt-4 text-xs text-slate-400">{t("est.disclaimer")}</p>
+      <p className="mt-4 text-xs text-gray-700 dark:text-gray-600">{t("est.disclaimer")}</p>
     </div>
   );
 }
@@ -140,6 +141,8 @@ export function PropertyPage() {
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [showCreditSimulator, setShowCreditSimulator] = useState(false);
   const [estimate, setEstimate] = useState<PropertyEstimate | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -163,7 +166,41 @@ export function PropertyPage() {
       .getPropertyEstimate(Number(id))
       .then(setEstimate)
       .catch(() => setEstimate(null));
+
+    // Only known once we ask the server (favorites are per-user); a
+    // logged-out visitor just sees the button in its default, un-favorited
+    // state - clicking it sends them to log in instead of erroring.
+    setIsFavorite(false);
+    if (isAuthenticated()) {
+      api
+        .getFavoriteStatus(Number(id))
+        .then((r) => setIsFavorite(r.is_favorite))
+        .catch(() => {});
+    }
   }, [id]);
+
+  const toggleFavorite = async () => {
+    if (!isAuthenticated()) {
+      navigate(`/login?next=/property/${id}`);
+      return;
+    }
+    if (!property || favoriteLoading) return;
+
+    const next = !isFavorite;
+    setFavoriteLoading(true);
+    setIsFavorite(next); // optimistic; reverted below on failure
+    try {
+      if (next) {
+        await api.addFavorite(property.id);
+      } else {
+        await api.removeFavorite(property.id);
+      }
+    } catch {
+      setIsFavorite(!next);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
   const goBack = () => {
     // Prefer real browser back navigation so the previous page (search
@@ -183,7 +220,7 @@ export function PropertyPage() {
   if (error || !property) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-20 text-center">
-        <p className="text-red-600">{error ?? t("prop.notFound")}</p>
+        <p className="text-horizonRed-500 dark:text-horizonRed-400">{error ?? t("prop.notFound")}</p>
         <button type="button" onClick={goBack} className="btn-primary mt-6 inline-flex">
           <ArrowLeft className="h-4 w-4" />
           {t("prop.back")}
@@ -211,26 +248,26 @@ export function PropertyPage() {
       <button
         type="button"
         onClick={goBack}
-        className="mb-6 inline-flex items-center gap-2 text-sm text-slate-500 transition hover:text-slate-900"
+        className="mb-6 inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-600 transition hover:text-navy-700 dark:hover:text-white"
       >
         <ArrowLeft className="h-4 w-4" />
         {t("prop.back")}
       </button>
 
-      <div className="animate-fade-in overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-card">
+      <div className="animate-fade-in overflow-hidden rounded-3xl border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 shadow-card">
         {/* Gallery Section */}
-        <div className="relative border-b border-slate-100 bg-slate-100">
+        <div className="relative border-b border-gray-200 dark:border-white/10 bg-lightPrimary dark:bg-navy-700">
           <div className="relative h-64 overflow-hidden sm:h-96 md:h-[450px]">
             {images.length > 0 ? (
               <img
                 src={images[activeImageIndex]}
                 alt={`${property.title} - Image ${activeImageIndex + 1}`}
-                className="h-full w-full object-contain bg-slate-100 transition duration-300"
+                className="h-full w-full object-contain bg-lightPrimary dark:bg-navy-700 transition duration-300"
               />
             ) : (
               <div className={`absolute inset-0 bg-gradient-to-br ${gradient} flex items-center justify-center`}>
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAiIGhlaWdodD0iNDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImEiIHdpZHRoPSI0MCIgaGVpZ2h0PSI0MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTTAgMTBoMTBNMTAgMHYxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJyZ2JhKDI1NSwyNTUsMjU1LDAuMDUpIi8+PC9wYXR0ZXJuPjwvZGVmcz48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSJ1cmwoI2EpIi8+PC9zdmc+')] opacity-50" />
-                <span className="text-sm font-medium text-slate-500">{t("prop.noImage")}</span>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-600">{t("prop.noImage")}</span>
               </div>
             )}
 
@@ -240,7 +277,7 @@ export function PropertyPage() {
                 <button
                   type="button"
                   onClick={prevImage}
-                  className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 border border-slate-200 text-slate-900 backdrop-blur transition hover:bg-white"
+                  className="absolute left-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 dark:bg-navy-800/85 border border-gray-200 dark:border-white/10 text-navy-700 dark:text-white backdrop-blur transition hover:bg-white dark:hover:bg-navy-800"
                   aria-label={t("prop.prevImage")}
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -248,7 +285,7 @@ export function PropertyPage() {
                 <button
                   type="button"
                   onClick={nextImage}
-                  className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 border border-slate-200 text-slate-900 backdrop-blur transition hover:bg-white"
+                  className="absolute right-4 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 dark:bg-navy-800/85 border border-gray-200 dark:border-white/10 text-navy-700 dark:text-white backdrop-blur transition hover:bg-white dark:hover:bg-navy-800"
                   aria-label={t("prop.nextImage")}
                 >
                   <ChevronRight className="h-5 w-5" />
@@ -258,15 +295,30 @@ export function PropertyPage() {
 
             {/* Image Counter Badge */}
             {images.length > 0 && (
-              <div className="absolute bottom-4 right-4 rounded-lg bg-white/85 px-2.5 py-1 text-xs font-medium text-slate-700 backdrop-blur">
+              <div className="absolute bottom-4 right-4 rounded-lg bg-white/85 dark:bg-navy-800/85 px-2.5 py-1 text-xs font-medium text-navy-700 dark:text-gray-300 backdrop-blur">
                 {activeImageIndex + 1} / {images.length}
               </div>
             )}
+
+            {/* Favorite toggle */}
+            <button
+              type="button"
+              onClick={toggleFavorite}
+              disabled={favoriteLoading}
+              aria-pressed={isFavorite}
+              aria-label={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
+              title={isFavorite ? t("prop.removeFavorite") : t("prop.addFavorite")}
+              className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 dark:border-white/10 bg-white/85 dark:bg-navy-800/85 text-navy-700 dark:text-gray-300 backdrop-blur transition hover:bg-white dark:hover:bg-navy-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Heart
+                className={`h-5 w-5 transition ${isFavorite ? "fill-red-500 text-horizonRed-500 dark:text-horizonRed-400" : ""}`}
+              />
+            </button>
           </div>
 
           {/* Thumbnails Row */}
           {hasMultipleImages && (
-            <div className="flex gap-2 overflow-x-auto p-4 bg-slate-50 scrollbar-none">
+            <div className="flex gap-2 overflow-x-auto p-4 bg-lightPrimary dark:bg-navy-900 scrollbar-none">
               {images.map((img, idx) => (
                 <button
                   key={`${idx}-${img}`}
@@ -292,23 +344,20 @@ export function PropertyPage() {
         {/* Content Section */}
         <div className="p-6 sm:p-8">
           {/* Title and Price */}
-          <div className="mb-6 border-b border-slate-100 pb-6">
+          <div className="mb-6 border-b border-gray-200 dark:border-white/10 pb-6">
             <div className="mb-3 flex flex-wrap gap-2">
-              <span className="rounded-lg bg-brand-500/15 px-3 py-1 text-xs font-semibold text-slate-900">
-                {sourceLabel(property.source)}
-              </span>
-              <span className="rounded-lg bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+              <span className="rounded-lg bg-lightPrimary dark:bg-navy-700 px-3 py-1 text-xs font-semibold text-navy-700 dark:text-gray-300">
                 {subcategoryLabel(property.subcategory, property.property_type)}
               </span>
-              <span className="rounded-lg bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-700">
+              <span className="rounded-lg bg-horizonOrange-500/15 px-3 py-1 text-xs font-semibold text-amber-700">
                 {listingTypeLabel(property.listing_type)}
               </span>
             </div>
             <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-              <h1 className="font-display text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
+              <h1 className="font-display text-2xl font-bold leading-tight text-navy-700 dark:text-white sm:text-3xl">
                 {property.title}
               </h1>
-              <p className="shrink-0 font-display text-2xl font-extrabold text-brand-400 sm:text-3xl">
+              <p className="shrink-0 font-display text-2xl font-extrabold text-brand-500 dark:text-brand-400 sm:text-3xl">
                 {formatPrice(property.price)}
               </p>
             </div>
@@ -322,7 +371,6 @@ export function PropertyPage() {
               value={governorateOf(property)}
             />
             <DetailItem icon={Maximize2} label={t("prop.area")} value={formatArea(property.area)} />
-            <DetailItem icon={Tag} label={t("prop.source")} value={sourceLabel(property.source)} />
             <DetailItem icon={Building} label={t("prop.type")} value={subcategoryLabel(property.subcategory, property.property_type)} />
             <DetailItem
               icon={Tag}
@@ -367,18 +415,18 @@ export function PropertyPage() {
 
           {/* Description */}
           {property.description && (
-            <div className="mb-8 border-t border-slate-100 pt-6">
-              <h2 className="mb-3 font-display text-xl font-semibold text-slate-900">
+            <div className="mb-8 border-t border-gray-200 dark:border-white/10 pt-6">
+              <h2 className="mb-3 font-display text-xl font-semibold text-navy-700 dark:text-white">
                 {t("prop.description")}
               </h2>
-              <p className="whitespace-pre-wrap leading-relaxed text-slate-500">
+              <p className="whitespace-pre-wrap leading-relaxed text-gray-700 dark:text-gray-600">
                 {property.description}
               </p>
             </div>
           )}
 
           {/* External Action */}
-          <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-6">
+          <div className="flex flex-wrap gap-3 border-t border-gray-200 dark:border-white/10 pt-6">
             <a
               href={property.url}
               target="_blank"

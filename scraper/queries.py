@@ -56,13 +56,37 @@ def get_properties(
     offset=0,
     include_archived=False,
     archived_only=False,
+    user_id=None,
 ):
+    # is_favorite lets the frontend show each card's saved state without an
+    # N+1 request per card. Only joined when a user is actually logged in
+    # (user_id is not None) - a public/logged-out request skips the join
+    # entirely and every row is just marked FALSE.
+    if user_id is not None:
+        favorite_join = """
+            LEFT JOIN favorites fav
+                ON fav.user_id = %s AND fav.source = properties.source AND fav.ad_id = properties.ad_id
+        """
+        favorite_join_params = [user_id]
+        is_favorite_select = "(fav.id IS NOT NULL) AS is_favorite"
+    else:
+        favorite_join = ""
+        favorite_join_params = []
+        is_favorite_select = "FALSE AS is_favorite"
+
+    # _PROPERTY_COLUMNS' bare column names (id, etc.) would be ambiguous once
+    # the favorites join is active (favorites also has an id column) - always
+    # qualify with the properties. prefix, same fix as get_favorite_properties.
+    qualified_columns = ", ".join(
+        f"properties.{col.strip()}" for col in _PROPERTY_COLUMNS.strip().split(",")
+    )
     sql = f"""
-        SELECT {_PROPERTY_COLUMNS}, COUNT(*) OVER() as total_count
+        SELECT {qualified_columns}, COUNT(*) OVER() as total_count, {is_favorite_select}
         FROM {_LATEST_PROPERTIES}
+        {favorite_join}
         WHERE 1=1
     """
-    params = []
+    params = list(favorite_join_params)
 
     if archived_only:
         sql += " AND archived = TRUE"
@@ -102,7 +126,7 @@ def get_properties(
         query_param = f"%{query}%"
         params.extend([query_param, query_param, query_param, query_param])
 
-    sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+    sql += " ORDER BY properties.id DESC LIMIT %s OFFSET %s"
     params.extend([limit, offset])
 
     with db_cursor() as cur:
@@ -289,6 +313,67 @@ def search_properties_admin(
         properties = [_row_to_dict(cur, row) for row in rows]
 
     return {"total": total, "total_filtered": total_filtered, "items": properties}
+
+
+def add_favorite(user_id, source, ad_id):
+    """Save a listing for a user. Idempotent - favoriting twice is a no-op."""
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            """
+            INSERT INTO favorites (user_id, source, ad_id)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (user_id, source, ad_id) DO NOTHING
+            """,
+            (user_id, source, ad_id),
+        )
+
+
+def remove_favorite(user_id, source, ad_id):
+    """Un-save a listing for a user. Idempotent - removing a non-favorite is a no-op."""
+    with db_cursor(commit=True) as cur:
+        cur.execute(
+            "DELETE FROM favorites WHERE user_id = %s AND source = %s AND ad_id = %s",
+            (user_id, source, ad_id),
+        )
+
+
+def is_favorite(user_id, source, ad_id):
+    with db_cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM favorites WHERE user_id = %s AND source = %s AND ad_id = %s",
+            (user_id, source, ad_id),
+        )
+        return cur.fetchone() is not None
+
+
+def get_favorite_properties(user_id):
+    """A user's saved listings, resolved to each one's latest version.
+
+    Joins through _LATEST_PROPERTIES (not the raw table) so a favorite of a
+    listing that's since been re-scraped with a change shows the current
+    version, not the stale row it was originally saved from. Archived
+    listings (delisted since being favorited) are excluded, same as every
+    other public-facing property query.
+    """
+    # _PROPERTY_COLUMNS' bare column names (id, etc.) would be ambiguous once
+    # joined against favorites, which also has an id column - qualify every
+    # column with the properties. prefix instead of reusing it as-is.
+    qualified_columns = ", ".join(
+        f"properties.{col.strip()}" for col in _PROPERTY_COLUMNS.strip().split(",")
+    )
+    with db_cursor() as cur:
+        cur.execute(
+            f"""
+            SELECT {qualified_columns}, TRUE AS is_favorite
+            FROM {_LATEST_PROPERTIES}
+            JOIN favorites f ON f.source = properties.source AND f.ad_id = properties.ad_id
+            WHERE f.user_id = %s AND properties.archived = FALSE
+            ORDER BY f.created_at DESC
+            """,
+            (user_id,),
+        )
+        rows = cur.fetchall()
+        return [_row_to_dict(cur, row) for row in rows]
 
 
 def archive_property(property_id):

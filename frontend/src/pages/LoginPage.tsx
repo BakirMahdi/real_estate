@@ -190,39 +190,39 @@ export function LoginPage() {
             to="/"
             className="inline-flex items-center justify-center gap-3"
           >
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-600 shadow-glow">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500 shadow-glow">
               <Building2 className="h-6 w-6 text-white" />
             </div>
             <div className="text-left">
-              <p className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+              <p className="font-display text-2xl font-semibold tracking-tight text-navy-700 dark:text-white">
                 Rews
               </p>
-              <p className="text-sm text-slate-500">Real Estate Web Scraper</p>
+              <p className="text-sm text-gray-700 dark:text-gray-600">Real Estate Web Scraper</p>
             </div>
           </Link>
         </div>
 
-        <div className="glass rounded-2xl p-8">
+        <div className="glass p-8">
           {pendingEmail ? (
             <>
               <div className="mb-6">
-                <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+                <h1 className="font-display text-2xl font-semibold tracking-tight text-navy-700 dark:text-white">
                   {t("verify.title")}
                 </h1>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-gray-700 dark:text-gray-600">
                   {t("verify.subtitle")}{" "}
-                  <span className="font-medium text-slate-700">{pendingEmail}</span>
+                  <span className="font-medium text-navy-700 dark:text-gray-300">{pendingEmail}</span>
                 </p>
               </div>
 
               {error && (
-                <div className="mb-4 flex items-start gap-2.5 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                  <p className="text-sm text-red-600">{t(error)}</p>
+                <div className="mb-4 flex items-start gap-2.5 rounded-lg bg-horizonRed-500/10 border border-red-500/20 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-horizonRed-500 dark:text-horizonRed-400" />
+                  <p className="text-sm text-horizonRed-500 dark:text-horizonRed-400">{t(error)}</p>
                 </div>
               )}
               {info && (
-                <div className="mb-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3">
+                <div className="mb-4 rounded-lg bg-horizonGreen-500/10 border border-emerald-500/20 p-3">
                   <p className="text-sm text-emerald-700">{t(info)}</p>
                 </div>
               )}
@@ -231,7 +231,7 @@ export function LoginPage() {
                 <div>
                   <label
                     htmlFor="code"
-                    className="mb-2 block text-sm font-medium text-slate-700"
+                    className="mb-2 block text-sm font-medium text-navy-700 dark:text-gray-300"
                   >
                     {t("verify.codeLabel")}
                   </label>
@@ -244,7 +244,7 @@ export function LoginPage() {
                     onChange={(e) =>
                       setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
                     }
-                    className="w-full rounded-lg border border-brand-200 bg-white px-4 py-3 text-center text-lg tracking-[0.5em] text-slate-900 placeholder-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 px-4 py-3 text-center text-lg tracking-[0.5em] text-navy-700 dark:text-white placeholder-gray-600 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     placeholder="______"
                     required
                     minLength={6}
@@ -265,7 +265,7 @@ export function LoginPage() {
                 <button
                   type="button"
                   onClick={handleResend}
-                  className="text-slate-500 transition hover:text-slate-900"
+                  className="text-gray-700 dark:text-gray-600 transition hover:text-navy-700 dark:hover:text-white"
                 >
                   {t("verify.resend")}
                 </button>
@@ -277,7 +277,7 @@ export function LoginPage() {
                     setError(null);
                     setInfo(null);
                   }}
-                  className="text-slate-500 transition hover:text-slate-900"
+                  className="text-gray-700 dark:text-gray-600 transition hover:text-navy-700 dark:hover:text-white"
                 >
                   {t("verify.back")}
                 </button>
@@ -286,22 +286,22 @@ export function LoginPage() {
           ) : (
             <>
               <div className="mb-6">
-                <h1 className="font-display text-2xl font-semibold tracking-tight text-slate-900">
+                <h1 className="font-display text-2xl font-semibold tracking-tight text-navy-700 dark:text-white">
                   {isLogin ? t("login.title") : t("login.titleRegister")}
                 </h1>
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-gray-700 dark:text-gray-600">
                   {isLogin ? t("login.subtitle") : t("login.subtitleRegister")}
                 </p>
               </div>
 
               {error && (
-                <div className="mb-4 flex items-start gap-2.5 rounded-lg bg-red-500/10 border border-red-500/20 p-3">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-                  <p className="text-sm text-red-600">{t(error)}</p>
+                <div className="mb-4 flex items-start gap-2.5 rounded-lg bg-horizonRed-500/10 border border-red-500/20 p-3">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-horizonRed-500 dark:text-horizonRed-400" />
+                  <p className="text-sm text-horizonRed-500 dark:text-horizonRed-400">{t(error)}</p>
                 </div>
               )}
               {info && (
-                <div className="mb-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 p-3">
+                <div className="mb-4 rounded-lg bg-horizonGreen-500/10 border border-emerald-500/20 p-3">
                   <p className="text-sm text-emerald-700">{t(info)}</p>
                 </div>
               )}
@@ -310,7 +310,7 @@ export function LoginPage() {
                 <div>
                   <label
                     htmlFor="email"
-                    className="mb-2 block text-sm font-medium text-slate-700"
+                    className="mb-2 block text-sm font-medium text-navy-700 dark:text-gray-300"
                   >
                     {t("login.email")}
                   </label>
@@ -319,7 +319,7 @@ export function LoginPage() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-lg border border-brand-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 px-4 py-3 text-navy-700 dark:text-white placeholder-gray-600 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     placeholder={t("login.emailPlaceholder")}
                     required
                   />
@@ -328,7 +328,7 @@ export function LoginPage() {
                 <div>
                   <label
                     htmlFor="password"
-                    className="mb-2 block text-sm font-medium text-slate-700"
+                    className="mb-2 block text-sm font-medium text-navy-700 dark:text-gray-300"
                   >
                     {t("login.password")}
                   </label>
@@ -337,7 +337,7 @@ export function LoginPage() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-lg border border-brand-200 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 px-4 py-3 text-navy-700 dark:text-white placeholder-gray-600 transition focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                     placeholder="••••••••"
                     required
                     // Only enforced when registering: an existing account's
@@ -374,7 +374,7 @@ export function LoginPage() {
                 <div className="mt-6">
                   <div className="mb-4 flex items-center gap-3">
                     <div className="h-px flex-1 bg-brand-100" />
-                    <span className="text-xs text-slate-400">{t("login.or")}</span>
+                    <span className="text-xs text-gray-700 dark:text-gray-600">{t("login.or")}</span>
                     <div className="h-px flex-1 bg-brand-100" />
                   </div>
                   <div ref={googleBtnRef} className="flex justify-center" />
@@ -389,7 +389,7 @@ export function LoginPage() {
                     setError(null);
                     setInfo(null);
                   }}
-                  className="text-sm text-slate-500 transition hover:text-slate-900"
+                  className="text-sm text-gray-700 dark:text-gray-600 transition hover:text-navy-700 dark:hover:text-white"
                 >
                   {isLogin ? t("login.toggleToRegister") : t("login.toggleToLogin")}
                 </button>
@@ -401,7 +401,7 @@ export function LoginPage() {
         <div className="mt-6 text-center">
           <Link
             to="/"
-            className="text-sm text-slate-500 transition hover:text-slate-900"
+            className="text-sm text-gray-700 dark:text-gray-600 transition hover:text-navy-700 dark:hover:text-white"
           >
             {t("login.backHome")}
           </Link>

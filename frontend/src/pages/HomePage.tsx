@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Home } from "lucide-react";
 import { api } from "../api/client";
 import { governorateOf, GOVERNORATE_NAMES } from "../lib/format";
@@ -10,19 +11,61 @@ import { useLang } from "../lib/i18n";
 
 const PAGE_SIZE = 12;
 
-const defaultFilters: SearchFilters = {
-  limit: PAGE_SIZE,
-  offset: 0,
-};
+// The active search lives in the URL query string, not component state, so
+// leaving for a property page and pressing "retour" restores the exact search
+// and page (browser back re-reads these params) instead of resetting to page 1
+// with no filters. It also makes a given search shareable/bookmarkable.
+const STRING_KEYS = ["city", "property_type", "listing_type", "query", "subcategory"] as const;
+const NUMERIC_KEYS = ["min_price", "max_price", "min_area", "max_area", "bedrooms"] as const;
+
+function filtersFromParams(params: URLSearchParams): SearchFilters {
+  const filters: SearchFilters = { limit: PAGE_SIZE, offset: 0 };
+  for (const key of STRING_KEYS) {
+    const value = params.get(key);
+    if (value) filters[key] = value;
+  }
+  for (const key of NUMERIC_KEYS) {
+    const value = params.get(key);
+    if (value && !Number.isNaN(Number(value))) filters[key] = Number(value);
+  }
+  // Pages are 1-based in the URL for readability; page 1 (the default) is
+  // omitted so a fresh search stays at a clean `/annonces`.
+  const page = Number(params.get("page"));
+  if (Number.isFinite(page) && page > 1) filters.offset = (page - 1) * PAGE_SIZE;
+  return filters;
+}
+
+function paramsFromFilters(filters: SearchFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  for (const key of STRING_KEYS) {
+    if (filters[key]) params.set(key, String(filters[key]));
+  }
+  for (const key of NUMERIC_KEYS) {
+    if (filters[key] != null) params.set(key, String(filters[key]));
+  }
+  const page = Math.floor((filters.offset ?? 0) / PAGE_SIZE) + 1;
+  if (page > 1) params.set("page", String(page));
+  return params;
+}
 
 export function HomePage() {
   const [properties, setProperties] = useState<Property[]>([]);
   const [governorates, setGovernorates] = useState<string[]>([]);
-  const [filters, setFilters] = useState<SearchFilters>(defaultFilters);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const filters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { t } = useLang();
+
+  // `replace` (not push) so typing in the search box or paging doesn't stack a
+  // history entry per keystroke; the listings page stays a single entry that
+  // always reflects the current search, and returning from a property page
+  // lands right back on it.
+  const applyFilters = useCallback(
+    (next: SearchFilters) => setSearchParams(paramsFromFilters(next), { replace: true }),
+    [setSearchParams],
+  );
 
   const loadGovernorates = useCallback(async () => {
     try {
@@ -62,14 +105,13 @@ export function HomePage() {
     loadProperties(filters);
   }, [filters, loadProperties]);
 
-  const resetFilters = () => setFilters(defaultFilters);
+  const resetFilters = () => setSearchParams(new URLSearchParams(), { replace: true });
 
   const currentPage = Math.floor((filters.offset ?? 0) / PAGE_SIZE) + 1;
   const totalPages = Math.ceil(total / PAGE_SIZE);
 
   const goToPage = (page: number) => {
-    const next = { ...filters, offset: (page - 1) * PAGE_SIZE };
-    setFilters(next);
+    applyFilters({ ...filters, offset: (page - 1) * PAGE_SIZE });
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -105,28 +147,28 @@ export function HomePage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
       <section className="mb-10 animate-fade-in">
-        <div className="mb-2 flex items-center gap-2 text-sm text-brand-400">
+        <div className="mb-2 flex items-center gap-2 text-sm text-brand-500 dark:text-brand-400">
           <Home className="h-4 w-4" />
           {t("home.catalog")}
         </div>
-        <h1 className="font-display text-4xl font-semibold tracking-tight text-slate-900 sm:text-5xl">
+        <h1 className="font-display text-4xl font-semibold tracking-tight text-navy-700 dark:text-white sm:text-5xl">
           {t("home.title")}
         </h1>
-        <p className="mt-3 max-w-2xl text-slate-500">{t("home.subtitle")}</p>
+        <p className="mt-3 max-w-2xl text-gray-700 dark:text-gray-600">{t("home.subtitle")}</p>
       </section>
 
       <div className="mb-8">
         <FilterBar
           filters={filters}
           governorates={governorates}
-          onChange={setFilters}
+          onChange={applyFilters}
           onReset={resetFilters}
         />
       </div>
 
       <div className="mb-6 flex items-center justify-between">
-        <p className="text-sm text-slate-500">
-          <span className="font-medium text-slate-900">{total}</span>{" "}
+        <p className="text-sm text-gray-700 dark:text-gray-600">
+          <span className="font-medium text-navy-700 dark:text-white">{total}</span>{" "}
           {total !== 1 ? t("home.found.many") : t("home.found.one")}
         </p>
       </div>
@@ -134,8 +176,8 @@ export function HomePage() {
       {loading ? (
         <LoadingSpinner label={t("home.loading")} />
       ) : error ? (
-        <div className="glass rounded-2xl p-8 text-center">
-          <p className="text-red-600">{error}</p>
+        <div className="glass p-8 text-center">
+          <p className="text-horizonRed-500 dark:text-horizonRed-400">{error}</p>
           <button
             type="button"
             onClick={() => loadProperties(filters)}
@@ -145,8 +187,8 @@ export function HomePage() {
           </button>
         </div>
       ) : properties.length === 0 ? (
-        <div className="glass rounded-2xl p-12 text-center">
-          <p className="text-slate-500">{t("home.noResults")}</p>
+        <div className="glass p-12 text-center">
+          <p className="text-gray-700 dark:text-gray-600">{t("home.noResults")}</p>
         </div>
       ) : (
         <>
@@ -162,17 +204,17 @@ export function HomePage() {
 
           {/* Pagination system */}
           {totalPages > 1 && (
-            <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-slate-100 pt-6 sm:flex-row animate-fade-in">
-              <p className="text-sm text-slate-500">
+            <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-gray-200 dark:border-white/10 pt-6 sm:flex-row animate-fade-in">
+              <p className="text-sm text-gray-700 dark:text-gray-600">
                 {t("home.showing")}{" "}
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-navy-700 dark:text-white">
                   {Math.min((filters.offset ?? 0) + 1, total)}
                 </span>{" "}
                 {t("home.to")}{" "}
-                <span className="font-medium text-slate-900">
+                <span className="font-medium text-navy-700 dark:text-white">
                   {Math.min((filters.offset ?? 0) + properties.length, total)}
                 </span>{" "}
-                {t("home.of")} <span className="font-medium text-slate-900">{total}</span>{" "}
+                {t("home.of")} <span className="font-medium text-navy-700 dark:text-white">{total}</span>{" "}
                 {t("home.listings")}
               </p>
 
@@ -181,7 +223,7 @@ export function HomePage() {
                   type="button"
                   onClick={() => goToPage(currentPage - 1)}
                   disabled={currentPage === 1 || loading}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white disabled:pointer-events-none disabled:opacity-30"
                   aria-label={t("home.prevPage")}
                 >
                   <ChevronLeft className="h-4 w-4" />
@@ -192,7 +234,7 @@ export function HomePage() {
                     return (
                       <span
                         key={`ell-${idx}`}
-                        className="flex h-9 w-9 items-center justify-center text-sm text-slate-400"
+                        className="flex h-9 w-9 items-center justify-center text-sm text-gray-700 dark:text-gray-600"
                       >
                         {p}
                       </span>
@@ -208,8 +250,8 @@ export function HomePage() {
                       disabled={loading}
                       className={`flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition ${
                         isActive
-                          ? "bg-brand-600 text-white shadow-md"
-                          : "border border-slate-200 bg-white text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+                          ? "bg-brand-500 text-white shadow-md"
+                          : "border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 text-gray-700 dark:text-gray-600 hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white"
                       }`}
                     >
                       {p}
@@ -221,7 +263,7 @@ export function HomePage() {
                   type="button"
                   onClick={() => goToPage(currentPage + 1)}
                   disabled={currentPage === totalPages || loading}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-30"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-navy-800 text-gray-700 dark:text-gray-600 transition hover:bg-lightPrimary dark:hover:bg-navy-700 hover:text-navy-700 dark:hover:text-white disabled:pointer-events-none disabled:opacity-30"
                   aria-label={t("home.nextPage")}
                 >
                   <ChevronRight className="h-4 w-4" />

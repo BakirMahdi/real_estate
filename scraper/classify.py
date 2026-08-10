@@ -7,7 +7,7 @@ Each scraper produces two category signals of differing reliability:
     tayara) collapse every non-land property into "house".
   - subcategory: the fine-grained category (apartment / house / studio / office
     / land). Reliable for non-land — tayara reads it straight from the ad's
-    metadata, mubawab/expat from keywords — but its land detection over-triggers
+    metadata, mubawab from keywords — but its land detection over-triggers
     (a terrain ad that says "villa" can be flipped to house).
 
 canonical_property_type() combines them so property_type finally reflects the

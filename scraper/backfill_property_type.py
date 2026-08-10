@@ -1,10 +1,10 @@
 """Backfill: make property_type the correct fine-grained category everywhere.
 
-Historically only the small `expat` source set a real property_type; `mubawab`
-and `tayara` collapsed every non-land ad into "house", so ~8k apartments,
-studios and offices were mislabelled, and a keyword bug flipped some terrains'
-subcategory to house. This re-derives the canonical category for every row from
-its existing (property_type, subcategory) pair — see scraper/classify.py, the
+Historically one source set a real property_type; `mubawab` and `tayara`
+collapsed every non-land ad into "house", so ~8k apartments, studios and offices
+were mislabelled, and a keyword bug flipped some terrains' subcategory to house.
+This re-derives the canonical category for every row from its existing
+(property_type, subcategory) pair — see scraper/classify.py, the
 same rule the scrapers now apply live — and writes property_type = subcategory
 = that canonical value. Rows that become `land` have their house-only
 attributes (bedrooms/garage/furnished/terrace/pool) cleared, since they don't

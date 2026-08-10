@@ -1,3 +1,6 @@
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -5,52 +8,93 @@
 @layer base {
   html {
     @apply scroll-smooth antialiased;
+    font-feature-settings: "kern";
+    letter-spacing: -0.2px;
   }
 
   body {
-    @apply min-h-screen bg-slate-50 font-sans text-slate-900;
-    background-image:
-      radial-gradient(at top left, rgba(30, 64, 175, 0.08), transparent 55%),
-      radial-gradient(at bottom right, rgba(30, 64, 175, 0.05), transparent 50%);
-    background-attachment: fixed;
+    /* Horizon's page plane: a pale blue-white in light, deep navy in dark.
+       The old radial-gradient wash is gone — Horizon's depth comes from the
+       card shadows sitting on a flat plane, and a gradient underneath them
+       muddies that. */
+    @apply min-h-screen bg-lightPrimary font-sans text-navy-700 dark:bg-navy-900 dark:text-white;
   }
 
   ::selection {
-    @apply bg-brand-600 text-white;
+    @apply bg-brand-500 text-white;
+  }
+
+  /* Horizon's Card reads shadow-shadow-100 from a variable so the same class
+     can carry a different tint per mode. */
+  :root {
+    --shadow-100: rgba(112, 144, 176, 0.08);
+  }
+
+  .dark {
+    --shadow-100: transparent;
+    color-scheme: dark;
   }
 }
 
 @layer components {
-  .glass {
-    @apply rounded-2xl border border-brand-200 bg-white;
+  /* ---- Surfaces ------------------------------------------------------- */
+
+  /* The Horizon card: a 20px-radius white panel with a soft blue shadow,
+     flipping to navy-800 with no shadow in dark (where the surface change
+     alone carries the elevation). */
+  .card {
+    @apply relative flex flex-col rounded-[20px] bg-white bg-clip-border shadow-card shadow-shadow-500 dark:bg-navy-800 dark:text-white dark:shadow-none;
   }
 
+  /* Kept as an alias so the existing `glass` call sites across the pages
+     inherit the new surface without each needing to be rewritten. */
+  .glass {
+    @apply card;
+  }
+
+  /* ---- Controls ------------------------------------------------------- */
+
   .btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-600 active:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-brand-400 dark:hover:bg-brand-300;
   }
 
   .btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-brand-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-medium text-navy-700 transition hover:bg-lightPrimary disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-navy-700 dark:text-white dark:hover:bg-navy-600;
   }
 
   .input-field {
-    @apply w-full rounded-xl border border-brand-200 bg-white px-4 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10;
+    @apply w-full rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm text-navy-700 outline-none transition placeholder:text-gray-600 focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-white/10 dark:bg-navy-900 dark:text-white dark:placeholder:text-gray-600 dark:focus:border-brand-400;
   }
 
-  .stat-card {
-    @apply glass rounded-2xl p-5 shadow-card;
+  /* Native selects and date inputs render their popup/indicator from
+     color-scheme; without this they stay white-on-white in dark mode. */
+  .input-field option {
+    @apply bg-white text-navy-700 dark:bg-navy-900 dark:text-white;
   }
+
+  /* ---- Typography ----------------------------------------------------- */
+
+  .heading-page {
+    @apply font-display text-[34px] font-bold tracking-tight text-navy-700 dark:text-white;
+  }
+
+  .heading-card {
+    @apply font-display text-lg font-bold text-navy-700 dark:text-white;
+  }
+
+  .text-muted {
+    @apply text-sm font-medium text-gray-700 dark:text-gray-600;
+  }
+
+  /* ---- DataTables (admin archive table) -------------------------------- */
 
   .dt-archive .dt-layout-row {
     @apply items-center gap-3 px-4 py-3;
   }
 
-  .dt-archive .dt-search .dt-input {
-    @apply rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10;
-  }
-
+  .dt-archive .dt-search .dt-input,
   .dt-archive .dt-length select {
-    @apply rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-900 outline-none;
+    @apply rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm text-navy-700 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-white/10 dark:bg-navy-900 dark:text-white;
   }
 
   .dt-archive table.dataTable {
@@ -58,15 +102,15 @@
   }
 
   .dt-archive table.dataTable thead th {
-    @apply border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-medium text-slate-400;
+    @apply border-b border-gray-200 bg-lightPrimary px-4 py-3 text-xs font-bold uppercase tracking-wide text-gray-700 dark:border-white/10 dark:bg-navy-900 dark:text-gray-600;
   }
 
   .dt-archive table.dataTable tbody td {
-    @apply border-b border-slate-100 px-4 py-3 text-slate-700;
+    @apply border-b border-gray-100 px-4 py-3 text-navy-700 dark:border-white/5 dark:text-gray-300;
   }
 
   .dt-archive table.dataTable tbody tr {
-    @apply transition hover:bg-slate-50;
+    @apply transition hover:bg-lightPrimary dark:hover:bg-navy-700;
   }
 
   .dt-archive table.dataTable tbody tr:last-child td {
@@ -74,18 +118,34 @@
   }
 
   .dt-archive .dt-paging .dt-paging-button {
-    @apply mx-0.5 rounded-lg px-3 py-1.5 text-sm text-slate-500 transition hover:bg-slate-100 hover:text-slate-900;
+    @apply mx-0.5 rounded-lg px-3 py-1.5 text-sm text-gray-700 transition hover:bg-lightPrimary hover:text-navy-700 dark:text-gray-600 dark:hover:bg-navy-700 dark:hover:text-white;
   }
 
   .dt-archive .dt-paging .dt-paging-button.current {
-    @apply bg-brand-600 text-white hover:bg-brand-600 hover:text-white;
+    @apply bg-brand-500 text-white hover:bg-brand-500 hover:text-white;
   }
 
   .dt-archive .dt-paging .dt-paging-button.disabled {
-    @apply cursor-not-allowed opacity-40 hover:bg-transparent hover:text-slate-500;
+    @apply cursor-not-allowed opacity-40 hover:bg-transparent;
   }
 
-  .dt-archive .dt-info {
-    @apply px-4 py-3 text-xs text-slate-400;
+  .dt-archive .dt-info,
+  .dt-archive .dt-length,
+  .dt-archive .dt-length label {
+    @apply text-xs text-gray-700 dark:text-gray-600;
   }
+}
+
+/* ApexCharts paints its own tooltip/legend chrome inline; these are the few
+   spots that need to follow the theme rather than the library default. */
+.apexcharts-tooltip {
+  @apply !rounded-xl !border-0 !shadow-card;
+}
+
+.apexcharts-tooltip.apexcharts-theme-dark {
+  @apply !bg-navy-700;
+}
+
+.apexcharts-canvas .apexcharts-text {
+  fill: #a3aed0;
 }

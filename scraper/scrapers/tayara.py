@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from bs4 import BeautifulSoup
 
+from ..amenities import extract_amenities_present
 from ..cancellation import raise_if_cancelled
 from ..classify import canonical_property_type
 from ..http_client import get_session
@@ -84,10 +85,6 @@ SALE_KEYWORDS = (
     "للبيع",
 )
 
-FURNISHED_KEYWORDS = ("meublé", "meublee", "meublée", "furnished")
-TERRACE_KEYWORDS = ("terrasse", "terrace", "balcon", "balkon", "balkony")
-POOL_KEYWORDS = ("piscine", "pool")
-GARAGE_KEYWORDS = ("garage", "parking couvert")
 BUILDABLE_KEYWORDS = ("constructible", "buildable", "قابل للبناء")
 ROAD_ACCESS_KEYWORDS = (
     "accès route",
@@ -134,24 +131,49 @@ def determine_listing_type(title, description, url, default="sale"):
     return default
 
 
-def parse_area(text):
-    # Accepts both Latin ("m2", "m²", "mètre") and Arabic ("م2", "م²") unit
-    # notations, since listings mix French and Arabic freely and the surface
-    # is sometimes only stated in the title (never in the description).
-    match = re.search(
-        r"(\d+(?:[.,]\d+)?)\s*(?:m\s*(?:2|²)?|mètre|metre|hectare|م\s*(?:2|²)?)",
-        text,
-        re.IGNORECASE,
-    )
-    if not match:
+# The surface unit must be explicit. An earlier version made the "2"/"²"
+# optional (`m\s*(?:2|²)?`), so *any* digit followed by a word starting with
+# "m" was read as a surface: "appartement s4 meublé" -> 4 m2, "s+1 meublé" ->
+# 1 m2, "AFH2 Mrezga" -> 2 m2. "meublé" is ubiquitous in Tunisian rental text,
+# which put a room count or a house number in the area column of ~19% of
+# built-property rows and corrupted the price model's strongest feature.
+# Bare "mètre" is rejected for the same reason: "à 200 mètres de la plage" is
+# a distance, not a surface. Both Latin ("m2", "m²") and Arabic ("م2", "م²")
+# notations are accepted, since listings mix French and Arabic freely and the
+# surface is sometimes only stated in the title.
+_AREA_WITH_UNIT = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*"
+    r"(m\s*[²2]|m[eè]tres?\s*carr[eé]s?|hectares?|ha\b|م\s*[²2])",
+    re.IGNORECASE,
+)
+# Fallback for a surface stated without any unit but named by an explicit
+# label ("superficie 250", "مساحة 250"), which the unit pattern can't see.
+_AREA_WITH_LABEL = re.compile(
+    r"(?:superficie|surface|مساحة)\D{0,15}?(\d+(?:[.,]\d+)?)",
+    re.IGNORECASE,
+)
+
+
+def _bounded_area(raw, hectares=False):
+    try:
+        area = float(raw.replace(",", "."))
+    except (AttributeError, ValueError):
         return None
-
-    area = float(match.group(1).replace(",", "."))
-    if "hectare" in match.group(0).lower():
+    if hectares:
         area *= 10000
-
     area = int(area)
     return area if 1 <= area <= 1_000_000 else None
+
+
+def parse_area(text):
+    match = _AREA_WITH_UNIT.search(text or "")
+    if match:
+        unit = match.group(2).lower()
+        return _bounded_area(match.group(1), unit.startswith(("hectare", "ha")))
+    match = _AREA_WITH_LABEL.search(text or "")
+    if match:
+        return _bounded_area(match.group(1))
+    return None
 
 
 def parse_rooms(description, title):
@@ -184,13 +206,8 @@ def parse_rooms(description, title):
 
 
 def parse_house_features(title, description):
-    text = f"{title} {description}"
-    return {
-        "garage": has_keyword(text, GARAGE_KEYWORDS),
-        "furnished": has_keyword(text, FURNISHED_KEYWORDS),
-        "terrace": has_keyword(text, TERRACE_KEYWORDS),
-        "pool": has_keyword(text, POOL_KEYWORDS),
-    }
+    # Shared, negation-aware extractor so tayara and mubawab agree.
+    return extract_amenities_present(f"{title} {description}")
 
 
 def is_real_estate_listing(ad):

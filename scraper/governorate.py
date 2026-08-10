@@ -153,6 +153,35 @@ DELEGATIONS = {
     "mellita": "Médenine",
     "el ksour": "Le Kef", "sers": "Le Kef",
     "rohia": "Siliana", "el aroussa": "Siliana",
+    # --- Sub-divided city delegations the sources emit verbatim ---
+    # Tayara/Mubawab label big cities by their administrative sub-delegation
+    # ("Bizerte Nord", "Sousse Riadh", "Gabès Sud"). Without these the whole
+    # string failed to match and resolve_delegation fell back to the
+    # governorate, i.e. the row lost every location signal finer than the
+    # governorate it already had. These were the highest-volume misses.
+    "bizerte nord": "Bizerte", "bizerte sud": "Bizerte", "bizerte ville": "Bizerte",
+    "bizerte centre ville": "Bizerte", "bizerte centre": "Bizerte",
+    "sousse riadh": "Sousse", "sousse jaouhara": "Sousse", "sousse jawhara": "Sousse",
+    "sousse medina": "Sousse", "medina sousse": "Sousse", "sousse ville": "Sousse",
+    "sidi abdelhamid": "Sousse", "zaouiet sousse": "Sousse", "zaouit sousse": "Sousse",
+    "sfax sud": "Sfax", "sfax ouest": "Sfax", "sfax medina": "Sfax", "sfax nord": "Sfax",
+    "el hajeb": "Sfax", "merkez kamoun": "Sfax", "merkez chaabouni": "Sfax",
+    "oued chaabouni": "Sfax",
+    "gabes ville": "Gabès", "gabes sud": "Gabès", "gabes nord": "Gabès",
+    "gabes medina": "Gabès",
+    "kairouan ville": "Kairouan", "kairouan nord": "Kairouan", "kairouan sud": "Kairouan",
+    "mansourah": "Kairouan",
+    "gafsa sud": "Gafsa", "gafsa nord": "Gafsa",
+    "mahdia ville": "Mahdia", "monastir ville": "Monastir",
+    "medina monastir": "Monastir", "zaouit ksibat thrayett": "Monastir",
+    "ksibet thrayett": "Monastir",
+    "beja nord": "Béja", "beja sud": "Béja",
+    "le kef ouest": "Le Kef", "le kef est": "Le Kef",
+    "kasserine nord": "Kasserine", "kasserine sud": "Kasserine",
+    # Spelling variants of towns already listed above, as the sources write them.
+    "djedeida": "Manouba", "kalaat andalous": "Ariana",
+    "hammam chott": "Ben Arous", "ez zeriba": "Zaghouan",
+    "tezdaine": "Médenine",
 }
 
 
@@ -180,3 +209,33 @@ def resolve_governorate(city, address):
                 return gov
     city = (city or "").strip()
     return city if city else "Tunisie"
+
+
+# Delegation keys matched longest-first so the most specific town wins (e.g.
+# "hammam sousse" before "sousse"), same "most-specific" rule as the
+# neighborhood gazetteer.
+_DELEGATIONS_BY_LEN = sorted(DELEGATIONS.keys(), key=len, reverse=True)
+
+
+def resolve_delegation(city, address):
+    """Town/delegation-level location, one step finer than governorate.
+
+    Used as a price-model feature: the urban `neighborhood` gazetteer only
+    covers Grand-Tunis areas, so for the rural towns where most land sits the
+    model otherwise has nothing between `city` (noisy free text) and
+    `governorate` (too coarse - it explains almost none of land's price/m2
+    spread). Returns the matched delegation, else the governorate name, else
+    None (unmatched rows are left blank rather than echoing the raw city,
+    which is already a separate feature).
+    """
+    norm = _normalize(f"{address or ''} {city or ''}")
+    if norm:
+        padded = f" {norm} "
+        for key in _DELEGATIONS_BY_LEN:
+            if f" {key} " in padded:
+                return key
+        for canonical, aliases in GOVERNORATES:
+            for alias in aliases:
+                if f" {alias} " in padded:
+                    return canonical
+    return None
